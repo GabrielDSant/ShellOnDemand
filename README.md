@@ -1,6 +1,6 @@
 # ShellOnDemand
 
-Bem-vindo ao projeto ShellOnDemand! Este repositório contém uma coleção de scripts que automatizam diversas rotinas de DevOps, facilitando a administração e monitoramento de ambientes Oracle.
+Bem-vindo ao projeto ShellOnDemand! Este repositório contém uma coleção de scripts que automatizam diversas rotinas de DevOps, facilitando a administração e monitoramento de ambientes.
 
 ## Scripts Disponíveis
 
