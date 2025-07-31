@@ -1,65 +1,72 @@
 # #################################################
-# Database COLD Backup Script.
+# Script de Backup COLD do Banco de Dados.
 #                                       #   #     #
-# Author:       Mahmmoud ADEL         # # # #   ###
-# Created:      22-12-13            #   #   # #   #  
+# Autor:        Mahmmoud ADEL         # # # #   ###
+# Criado:       22-12-13            #   #   # #   #  
 #
-# Modified:     16-05-14 Increased linesize
-#			 to avoid line breaking.
+# Modificado:   16-05-14 Aumentado o tamanho da linha
+#               para evitar quebra de linha.
 #
 # #################################################
 
+# #################################################
+# Este script realiza um backup COLD de um banco de dados Oracle.
+# Ele verifica as instâncias disponíveis, permite ao usuário selecionar
+# uma instância, valida o ambiente, cria scripts de backup e restauração,
+# e executa o backup. O backup é feito enquanto o banco de dados está desligado.
+# #################################################
+
 # ###########
-# Description:
+# Descrição:
 # ###########
 echo
 echo "==============================================="
-echo "This script Takes a COLD BACKUP for a database."
+echo "Este script realiza um BACKUP COLD de um banco de dados."
 echo "==============================================="
 echo
 sleep 1
 
 
 # #######################################
-# Excluded INSTANCES:
+# Instâncias Excluídas:
 # #######################################
-# Here you can mention the instances the script will IGNORE and will NOT run against:
-# Use pipe "|" as a separator between each instance name.
-# e.g. Excluding: -MGMTDB, ASM instances:
+# Aqui você pode mencionar as instâncias que o script irá IGNORAR e NÃO será executado:
+# Use o caractere pipe "|" como separador entre os nomes das instâncias.
+# Exemplo de exclusão: -MGMTDB, instâncias ASM:
 
-EXL_DB="\-MGMTDB|ASM"                           #Excluded INSTANCES [Will not get reported offline].
+EXL_DB="\-MGMTDB|ASM"                           # Instâncias Excluídas [Não serão reportadas como offline].
 
 # ###########################
-# Listing Available Databases:
+# Listando Bancos de Dados Disponíveis:
 # ###########################
 
-# Count Instance Numbers:
+# Contar o Número de Instâncias:
 INS_COUNT=$( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|wc -l )
 
-# Exit if No DBs are running:
+# Sair se nenhum banco de dados estiver em execução:
 if [ $INS_COUNT -eq 0 ]
  then
-   echo No Database Running !
+   echo Nenhum Banco de Dados em Execução!
    exit
 fi
 
-# If there is ONLY one DB set it as default without prompt for selection:
+# Se houver apenas um banco de dados, defini-lo como padrão sem solicitar seleção:
 if [ $INS_COUNT -eq 1 ]
  then
    export ORACLE_SID=$( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|awk '{print $NF}'|sed -e 's/ora_pmon_//g'|grep -v sed|grep -v "s///g" )
 
-# If there is more than one DB ASK the user to select:
+# Se houver mais de um banco de dados, solicitar ao usuário que selecione:
 elif [ $INS_COUNT -gt 1 ]
  then
     echo
-    echo "Select the ORACLE_SID:[Enter the number]"
+    echo "Selecione o ORACLE_SID:[Digite o número]"
     echo ---------------------
     select DB_ID in $( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|awk '{print $NF}'|sed -e 's/ora_pmon_//g'|grep -v sed|grep -v "s///g" )
      do
         if [ -z "${REPLY##[0-9]*}" ]
          then
           export ORACLE_SID=$DB_ID
-          echo Selected Instance:
+          echo Instância Selecionada:
 	  echo
 	  echo "********"
           echo $DB_ID
@@ -72,106 +79,106 @@ elif [ $INS_COUNT -gt 1 ]
      done
 
 fi
-# Exit if the user selected a Non Listed Number:
+# Sair se o usuário selecionar um número não listado:
         if [ -z "${ORACLE_SID}" ]
          then
-          echo "You've Entered An INVALID ORACLE_SID"
+          echo "Você inseriu um ORACLE_SID INVÁLIDO"
           exit
         fi
 
 # #########################
-# Getting ORACLE_HOME
+# Obtendo ORACLE_HOME
 # #########################
   ORA_USER=`ps -ef|grep ${ORACLE_SID}|grep pmon|grep -v grep|egrep -v ${EXL_DB}|grep -v "\-MGMTDB"|awk '{print $1}'|tail -1`
   USR_ORA_HOME=`grep ${ORA_USER} /etc/passwd| cut -f6 -d ':'|tail -1`
 
-# SETTING ORATAB:
+# CONFIGURANDO ORATAB:
 if [ -f /etc/oratab ]
   then
   ORATAB=/etc/oratab
   export ORATAB
-## If OS is Solaris:
+## Se o sistema operacional for Solaris:
 elif [ -f /var/opt/oracle/oratab ]
   then
   ORATAB=/var/opt/oracle/oratab
   export ORATAB
 fi
 
-# ATTEMPT1: Get ORACLE_HOME using pwdx command:
+# TENTATIVA 1: Obter ORACLE_HOME usando o comando pwdx:
   PMON_PID=`pgrep  -lf _pmon_${ORACLE_SID}|awk '{print $1}'`
   export PMON_PID
   ORACLE_HOME=`pwdx ${PMON_PID}|awk '{print $NF}'|sed -e 's/\/dbs//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from PWDX is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do PWDX é ${ORACLE_HOME}"
 
-# ATTEMPT2: If ORACLE_HOME not found get it from oratab file:
+# TENTATIVA 2: Se ORACLE_HOME não for encontrado, obtê-lo do arquivo oratab:
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
-## If OS is Linux:
+## Se o sistema operacional for Linux:
 if [ -f /etc/oratab ]
   then
   ORATAB=/etc/oratab
   ORACLE_HOME=`grep -v '^\#' $ORATAB | grep -v '^$'| grep -i "^${ORACLE_SID}:" | perl -lpe'$_ = reverse' | cut -f3 | perl -lpe'$_ = reverse' |cut -f2 -d':'`
   export ORACLE_HOME
 
-## If OS is Solaris:
+## Se o sistema operacional for Solaris:
 elif [ -f /var/opt/oracle/oratab ]
   then
   ORATAB=/var/opt/oracle/oratab
   ORACLE_HOME=`grep -v '^\#' $ORATAB | grep -v '^$'| grep -i "^${ORACLE_SID}:" | perl -lpe'$_ = reverse' | cut -f3 | perl -lpe'$_ = reverse' |cut -f2 -d':'`
   export ORACLE_HOME
 fi
-#echo "ORACLE_HOME from oratab is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do oratab é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT3: If ORACLE_HOME is still not found, search for the environment variable: [Less accurate]
+# TENTATIVA 3: Se ORACLE_HOME ainda não for encontrado, procure pela variável de ambiente: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`env|grep -i ORACLE_HOME|sed -e 's/ORACLE_HOME=//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from environment  is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do ambiente é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT4: If ORACLE_HOME is not found in the environment search user's profile: [Less accurate]
+# TENTATIVA 4: Se ORACLE_HOME não for encontrado no ambiente, procure no perfil do usuário: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`grep -h 'ORACLE_HOME=\/' $USR_ORA_HOME/.bash_profile $USR_ORA_HOME/.*profile | perl -lpe'$_ = reverse' |cut -f1 -d'=' | perl -lpe'$_ = reverse'|tail -1`
   export ORACLE_HOME
-#echo "ORACLE_HOME from User Profile is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do Perfil do Usuário é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT5: If ORACLE_HOME is still not found, search for orapipe: [Least accurate]
+# TENTATIVA 5: Se ORACLE_HOME ainda não for encontrado, procure por orapipe: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`locate -i orapipe|head -1|sed -e 's/\/bin\/orapipe//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from orapipe search is ${ORACLE_HOME}"
+#echo "ORACLE_HOME da busca por orapipe é ${ORACLE_HOME}"
 fi
 
-# TERMINATE: If all above attempts failed to get ORACLE_HOME location, EXIT the script:
+# TERMINAR: Se todas as tentativas acima falharem em obter a localização do ORACLE_HOME, SAIR do script:
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
-  echo "Please export ORACLE_HOME variable in your .bash_profile file under oracle user home directory in order to get this script to run properly"
-  echo "e.g."
+  echo "Por favor, exporte a variável ORACLE_HOME no seu arquivo .bash_profile no diretório home do usuário oracle para que este script funcione corretamente"
+  echo "Exemplo:"
   echo "export ORACLE_HOME=/u01/app/oracle/product/11.2.0/db_1"
 exit
 fi
 
 # ########################################
-# Exit if the user is not the Oracle Owner:
+# Sair se o usuário não for o proprietário do Oracle:
 # ########################################
 CURR_USER=`whoami`
         if [ ${ORA_USER} != ${CURR_USER} ]; then
           echo ""
-          echo "You're Running This Sctipt with User: \"${CURR_USER}\" !!!"
-          echo "Please Run This Script With The Right OS User: \"${ORA_USER}\""
-          echo "Script Terminated!"
+          echo "Você está executando este script com o usuário: \"${CURR_USER}\" !!!"
+          echo "Por favor, execute este script com o usuário correto do sistema operacional: \"${ORA_USER}\""
+          echo "Script Terminado!"
           exit
         fi
 
-# Neutralize login.sql file:
+# Neutralizar o arquivo login.sql:
 # #########################
-# Existance of login.sql file under current working directory eliminates many functions during the execution of this script:
+# A existência do arquivo login.sql no diretório de trabalho atual elimina muitas funções durante a execução deste script:
 
         if [ -f ./login.sql ]
          then
@@ -179,10 +186,10 @@ mv ./login.sql   ./login.sql_NeutralizedBy${SCRIPT_NAME}
         fi
 
 # ################################
-# Creating Backup & Restore Script:
+# Criando Script de Backup e Restauração:
 # ################################
 echo 
-echo "Enter the Backup location: [Full Path]"
+echo "Digite o local do Backup: [Caminho Completo]"
 echo "-------------------------"
 while read LOC1
         do
@@ -191,14 +198,14 @@ while read LOC1
                 /bin/mkdir -p ${LOC2}
 
                 if [ ! -d "${LOC2}" ]; then
-                 echo "Provided Backup Location is NOT Exist/Writable !"
+                 echo "O local de backup fornecido NÃO existe ou não é gravável!"
                  echo
-                 echo "Please Provide a VALID Backup Location:"
+                 echo "Por favor, forneça um local de backup VÁLIDO:"
 		 echo "---------------------------------------"
                 else
                  echo
                  sleep 1
-                 echo "Backup Location Validated."
+                 echo "Local de Backup Validado."
                  echo
                  break
                 fi
@@ -208,16 +215,16 @@ RSTSCRIPT=${LOC2}/Restore_Cold_Backup.sh
 BKPSCRIPTLOG=${LOC2}/Cold_Backup.log
 RSTSCRIPTLOG=${LOC2}/Restore_Cold_Backup.log
 
-# Creating the Cold Backup script:
+# Criando o script de Backup Cold:
 echo
-echo "Creating Cold Backup and Cold Restore Scripts ..."
+echo "Criando Scripts de Backup Cold e Restauração Cold ..."
 sleep 1
 cd ${LOC2}
 ${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 set pages 0 
 set termout off echo off feedback off linesize 400;
 spool Cold_Backup.sh
-PROMPT echo "Shutting Down Database $ORACLE_SID ... [Ctrl+c to CANCEL]"
+PROMPT echo "Desligando o Banco de Dados $ORACLE_SID ... [Ctrl+c para CANCELAR]"
 PROMPT echo "[5]"
 PROMPT sleep 1
 PROMPT echo "[4]"
@@ -228,19 +235,19 @@ PROMPT echo "[2]"
 PROMPT sleep 1
 PROMPT echo "[1]"
 PROMPT sleep 1
-PROMPT echo "SHUTTING DOWN NOW ..."
+PROMPT echo "DESLIGANDO AGORA ..."
 PROMPT sleep 3
 PROMPT echo ""
 PROMPT ${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 PROMPT shutdown immediate;
 PROMPT EOF
-PROMPT echo "Database SHUTDOWN SUCCESFULLY."
+PROMPT echo "Banco de Dados DESLIGADO COM SUCESSO."
 PROMPT sleep 1
 PROMPT echo
-PROMPT echo "Starting DB FILES copy ..."
+PROMPT echo "Iniciando cópia dos ARQUIVOS do BD ..."
 PROMPT echo
 PROMPT echo "************************"
-PROMPT echo "DON'T CLOSE THIS SESSION, Once the BACKUP JOB is DONE, it will return you back to the PROMPT."
+PROMPT echo "NÃO FECHE ESTA SESSÃO. Assim que o TRABALHO DE BACKUP for CONCLUÍDO, você será retornado ao PROMPT."
 PROMPT echo "************************"
 PROMPT echo
 PROMPT sleep 1
@@ -257,26 +264,26 @@ PROMPT echo
 spool off
 EOF
 chmod 700 ${BKPSCRIPT}
-# Creating the Restore Script:
+# Criando o Script de Restauração:
 ${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 set pages 0 termout off echo off feedback off linesize 400;
 spool Restore_Cold_Backup.sh
 PROMPT echo ""
-PROMPT echo "Restoring Database $ORACLE_SID from Cold Backup [${EXTEN}] ..."
+PROMPT echo "Restaurando o Banco de Dados $ORACLE_SID do Backup Cold [${EXTEN}] ..."
 PROMPT sleep 1
 PROMPT echo ""
-PROMPT echo "ARE YOU SURE YOU WANT TO RESTORE DATABASE [${ORACLE_SID}] ? [Y|N] [N]"
+PROMPT echo "VOCÊ TEM CERTEZA QUE DESEJA RESTAURAR O BANCO DE DADOS [${ORACLE_SID}]? [Y|N] [N]"
 PROMPT while read ANS
 PROMPT  do
 PROMPT          case \$ANS in
-PROMPT                  y|Y|yes|YES|Yes) echo "RESTORATION JOB STARTED ...";break ;;;
-PROMPT                  ""|n|N|no|NO|No) echo "Script Terminated.";exit;break ;;;
-PROMPT                  *) echo "Please enter a VALID answer [Y|N]" ;;;
+PROMPT                  y|Y|yes|YES|Yes) echo "TRABALHO DE RESTAURAÇÃO INICIADO ...";break ;;;
+PROMPT                  ""|n|N|no|NO|No) echo "Script Terminado.";exit;break ;;;
+PROMPT                  *) echo "Por favor, insira uma resposta VÁLIDA [Y|N]" ;;;
 PROMPT          esac
 PROMPT  done
 PROMPT ORACLE_SID=${ORACLE_SID}
 PROMPT export ORACLE_SID
-PROMPT echo "Shutting Down Database ${ORACLE_SID} ... [Ctrl+c to CANCEL]"
+PROMPT echo "Desligando o Banco de Dados ${ORACLE_SID} ... [Ctrl+c para CANCELAR]"
 PROMPT echo "[5]"
 PROMPT sleep 1
 PROMPT echo "[4]"
@@ -287,14 +294,14 @@ PROMPT echo "[2]"
 PROMPT sleep 1
 PROMPT echo "[1]"
 PROMPT sleep 1
-PROMPT echo "SHUTTING DOWN NOW ..."
+PROMPT echo "DESLIGANDO AGORA ..."
 PROMPT sleep 3
 PROMPT echo ""
 PROMPT ${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 PROMPT shutdown immediate;
 PROMPT EOF
 PROMPT 
-PROMPT echo "Restoration Job Started ..."
+PROMPT echo "Trabalho de Restauração Iniciado ..."
 PROMPT echo ""
 PROMPT echo -ne '...'
 select 'cp -vpf $LOC2/'||SUBSTR(name, INSTR(name,'/', -1,1)+1)||'  '||name||' ; echo ' ||'-ne '''||'...''' from v\$controlfile
@@ -306,7 +313,7 @@ PROMPT echo
 PROMPT ${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 PROMPT startup
 PROMPT PROMPT
-PROMPT PROMPT Adding TEMPFILES TO TEMPORARY TABLESPACES...
+PROMPT PROMPT Adicionando TEMPFILES AOS TABLESPACES TEMPORÁRIOS...
 select 'ALTER DATABASE TEMPFILE '''||file_name||''' DROP;' from dba_temp_files;
 select 'ALTER TABLESPACE '||tablespace_name||' ADD TEMPFILE '''||file_name||''' REUSE;' from dba_temp_files;
 PROMPT EOF
@@ -318,15 +325,15 @@ PROMPT )
 PROMPT VAL2=\`echo \$VAL1 | perl -lpe'\$_ = reverse' |awk '{print \$1}'|perl -lpe'\$_ = reverse'\`
 PROMPT case \${VAL2} in "OPEN")
 PROMPT echo "******************************************************"
-PROMPT echo "Database [$ORACLE_SID] has been Restored Successfully."
-PROMPT echo "Database [$ORACLE_SID] is UP."
+PROMPT echo "Banco de Dados [$ORACLE_SID] foi Restaurado com Sucesso."
+PROMPT echo "Banco de Dados [$ORACLE_SID] está ATIVO."
 PROMPT echo "******************************************************"
 PROMPT echo 
 PROMPT echo ;;;
 PROMPT *)
 PROMPT echo "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-PROMPT echo "Database [$ORACLE_SID] CANNOT OPEN !"
-PROMPT echo "Please check the ALERTlOG and investigate."
+PROMPT echo "Banco de Dados [$ORACLE_SID] NÃO PODE SER ABERTO!"
+PROMPT echo "Por favor, verifique o ALERTLOG e investigue."
 PROMPT echo "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 PROMPT echo 
 PROMPT echo ;;;
@@ -338,25 +345,25 @@ chmod 700 ${RSTSCRIPT}
 
         if [ ! -f "${BKPSCRIPT}" ]; then
           echo ""
-          echo "Backup & Restore Scripts CANNOT be Created."
-          echo "Script Failed to Create the Cold Backup job !"
-          echo "Please check the Backup Location permissions."
+          echo "Os Scripts de Backup e Restauração NÃO puderam ser Criados."
+          echo "O Script Falhou ao Criar o trabalho de Backup Cold!"
+          echo "Por favor, verifique as permissões do Local de Backup."
           exit
         fi
 
 echo
 echo "--------------------------------------------------------"
-echo "Backup & Restore Scripts have been Created Successfully."
+echo "Os Scripts de Backup e Restauração foram Criados com Sucesso."
 echo "--------------------------------------------------------"
 echo
 echo
 sleep 1
 
 # ############################
-# Executing Cold Backup Script:
+# Executando o Script de Backup Cold:
 # ############################
-# Checking if more than one instance is running: [RAC]
-echo "Checking Other OPEN instances [RAC]."
+# Verificando se mais de uma instância está em execução: [RAC]
+echo "Verificando Outras instâncias ABERTAS [RAC]."
 sleep 1
 VAL3=$(${ORACLE_HOME}/bin/sqlplus -s '/ as sysdba' << EOF
 set heading off echo off feedback off termout off
@@ -367,28 +374,28 @@ VAL4=`echo $VAL3 | perl -lpe'$_ = reverse' |awk '{print $1}'|perl -lpe'$_ = reve
                 if [ ${VAL4} -gt 1 ]
                  then
                   echo
-                  echo "WARNING:"
+                  echo "AVISO:"
                   echo "-------"
-                  echo "Please SHUTDOWN ALL other RAC INSTANCES EXCEPT the one on the CURRENT Node."
-                  echo "Then Re-run COLD_BACKUP.sh script Again."
+                  echo "Por favor, DESLIGUE TODAS as outras INSTÂNCIAS RAC, EXCETO a que está no NÓ ATUAL."
+                  echo "Em seguida, execute novamente o script COLD_BACKUP.sh."
                   echo ""
                   exit
                 fi
 echo
-echo "VERIFIED: Only ONE INSTANCE is RUNNING for Database [${ORACLE_SID}]."
+echo "VERIFICADO: Apenas UMA INSTÂNCIA está em execução para o Banco de Dados [${ORACLE_SID}]."
 echo
 sleep 1
-echo "ARE YOU SURE TO SHUTDOWN DATABASE [${ORACLE_SID}] AND START THE COLD BACKUP JOB? [Y|N] [N]"
+echo "VOCÊ TEM CERTEZA QUE DESEJA DESLIGAR O BANCO DE DADOS [${ORACLE_SID}] E INICIAR O TRABALHO DE BACKUP COLD? [Y|N] [N]"
 while read ANS
  do
          case $ANS in
-                 y|Y|yes|YES|Yes) echo;echo "COLD BACKUP PROCEDURE STARTED ...";break ;;
-                 ""|n|N|no|NO|No) echo;echo "Script Terminated.";exit;break ;;
-                 *) echo "Please enter a VALID answer [Y|N]" ;;
+                 y|Y|yes|YES|Yes) echo;echo "PROCEDIMENTO DE BACKUP COLD INICIADO ...";break ;;
+                 ""|n|N|no|NO|No) echo;echo "Script Terminado.";exit;break ;;
+                 *) echo "Por favor, insira uma resposta VÁLIDA [Y|N]" ;;
          esac
  done
 echo
-echo "Database [${ORACLE_SID}] Will SHUTDOWN within [5 Seconds] ... [To CANCEL press [Ctrl+c]]"
+echo "O Banco de Dados [${ORACLE_SID}] será DESLIGADO em [5 Segundos] ... [Para CANCELAR pressione [Ctrl+c]]"
 echo "[5]"
 sleep 1
 echo "[4]"
@@ -400,8 +407,8 @@ sleep 1
 echo "[1]"
 sleep 1
 echo ""
-echo "Shutting Down Database [${ORACLE_SID}] ..."
-echo "Backup Files will be Copied Under: [${LOC2}] ..."
+echo "Desligando o Banco de Dados [${ORACLE_SID}] ..."
+echo "Os Arquivos de Backup serão Copiados para: [${LOC2}] ..."
 echo
 sleep 1
 exec ${BKPSCRIPT} |tee  ${BKPSCRIPTLOG}
@@ -411,58 +418,58 @@ exec ${BKPSCRIPT} |tee  ${BKPSCRIPTLOG}
   then
    echo 
    echo "xxxxxxxxxxxxxxxxxxx"
-   echo "Backup Job Failed !"
+   echo "Trabalho de Backup Falhou!"
    echo "xxxxxxxxxxxxxxxxxxx"
    echo
   else
    echo
-   echo "Database Cold Backup is DONE."
-   echo "Please Note that TEMP DATAFILES are NOT included in this Backup."
+   echo "Backup Cold do Banco de Dados CONCLUÍDO."
+   echo "Por favor, observe que os ARQUIVOS TEMPORAIS não estão incluídos neste Backup."
    echo
    echo "****************************************************************"
-   echo "COLD BACKUP files located under: ${LOC2}"
+   echo "Os arquivos de BACKUP COLD estão localizados em: ${LOC2}"
    echo "****************************************************************"
    echo
    echo "****************************************************************"
-   echo "Later, To restore database ${DB_ID} from this COLD BACKUP,"
-   echo "use this script to do that job automatically:"
+   echo "Posteriormente, para restaurar o banco de dados ${DB_ID} a partir deste BACKUP COLD,"
+   echo "use este script para realizar o trabalho automaticamente:"
    echo "${RSTSCRIPT}"
    echo "****************************************************************"
  fi
 
 rm -f ${VAL11}
 echo
-echo "Do You Want to STARTUP Database [${ORACLE_SID}]? [Y|N] [Y]"
+echo "Você deseja INICIAR o Banco de Dados [${ORACLE_SID}]? [Y|N] [Y]"
 echo "==========================================="
 while read ANS
  do
          case $ANS in
-                 ""|y|Y|yes|YES|Yes) echo "STARTING UP DATABASE [${ORACLE_SID}] ..."
+                 ""|y|Y|yes|YES|Yes) echo "INICIANDO O BANCO DE DADOS [${ORACLE_SID}] ..."
 ${ORACLE_HOME}/bin/sqlplus -s '/ as sysdba' << EOF
 STARTUP
 EOF
 echo
 break ;;
-                 n|N|no|NO|No) echo;echo "Script FINISHED."
-echo "To restore this database from the COLD BACKUP, Run Script: [${RSTSCRIPT}]"
+                 n|N|no|NO|No) echo;echo "Script CONCLUÍDO."
+echo "Para restaurar este banco de dados a partir do BACKUP COLD, execute o Script: [${RSTSCRIPT}]"
 exit
 break ;;
-                 *) echo "Please enter a VALID answer [Y|N]" ;;
+                 *) echo "Por favor, insira uma resposta VÁLIDA [Y|N]" ;;
          esac
  done
 
-# De-Neutralize login.sql file:
+# Desneutralizar o arquivo login.sql:
 # ############################
-# If login.sql was renamed during the execution of the script revert it back to its original name:
+# Se o login.sql foi renomeado durante a execução do script, revertê-lo para o nome original:
         if [ -f ./login.sql_NeutralizedBy${SCRIPT_NAME} ]
          then
 mv ./login.sql_NeutralizedBy${SCRIPT_NAME}  ./login.sql
         fi
 
 # #############
-# END OF SCRIPT
+# FIM DO SCRIPT
 # #############
-# REPORT BUGS to: <mahmmoudadel@hotmail.com>.
-# DISCLAIMER: THIS SCRIPT IS DISTRIBUTED IN THE HOPE THAT IT WILL BE USEFUL, BUT WITHOUT ANY WARRANTY. IT IS PROVIDED "AS IS".
-# DOWNLOAD THE LATEST VERSION OF DATABASE ADMINISTRATION BUNDLE FROM: 
+# RELATE BUGS para: <mahmmoudadel@hotmail.com>.
+# AVISO LEGAL: ESTE SCRIPT É DISTRIBUÍDO NA ESPERANÇA DE QUE SEJA ÚTIL, MAS SEM QUALQUER GARANTIA. ELE É FORNECIDO "COMO ESTÁ".
+# BAIXE A VERSÃO MAIS RECENTE DO PACOTE DE ADMINISTRAÇÃO DE BANCO DE DADOS EM: 
 # http://dba-tips.blogspot.com/2014/02/oracle-database-administration-scripts.html

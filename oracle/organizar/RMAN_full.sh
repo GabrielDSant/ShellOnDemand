@@ -1,84 +1,89 @@
 # #####################################################################
-# This script takes a RMAN Backup a database.
-# [Ver 4.0]
+# Este script realiza um backup completo (FULL) do banco de dados usando RMAN.
+# [Versão 4.0]
 #						#   #     #
-# Author:	Mahmmoud ADEL	      	      # # # #   ###
-# Created:	24-09-11	    	    #   #   # #   # 
-# Modified:	31-12-13	     
-#		Customized the script to run on
-#		various environments.
-#		12-03-16 Run RMAN command in the background
-#         	         to avoid job fail when session terminate.
-#		23-08-16 Added Backup Encryption Option.
-#		17-11-16 Added Channels Number feature.
-#		22-01-18 Added Controlfile compressed backup option.
+# Autor:	Mahmmoud ADEL	      	      # # # #   ###
+# Criado em:	24-09-11	    	    #   #   # #   # 
+# Modificado em:	31-12-13	     
+#		Personalizado para rodar em
+#		diversos ambientes.
+#		12-03-16 Executa o comando RMAN em segundo plano
+#         	         para evitar falhas no trabalho quando a sessão é encerrada.
+#		23-08-16 Adicionada a opção de criptografia de backup.
+#		17-11-16 Adicionado recurso de número de canais.
+#		22-01-18 Adicionada a opção de backup compactado do arquivo de controle.
 #
 # #####################################################################
 
 # ###########
-# Description:
+# Descrição:
 # ###########
+# Este script realiza um backup completo do banco de dados Oracle usando RMAN.
+# Ele verifica as instâncias disponíveis, permite a seleção do banco de dados,
+# configura o ambiente necessário e cria um script RMAN para realizar o backup.
+# O backup pode ser compactado e criptografado, dependendo das opções fornecidas pelo usuário.
+
 echo
 echo "==================================================="
-echo "This script Takes a RMAN FULL Backup of a database."
+echo "Este script realiza um backup completo (FULL) do banco de dados usando RMAN."
 echo "==================================================="
 echo
 sleep 1
 
 # ###########################
-# CPU count check:
+# Verificação da contagem de CPUs:
 # ###########################
 
-# Count of CPUs:
+# Contagem de CPUs:
 CPU_NUM=`cat /proc/cpuinfo|grep CPU|wc -l`
 export CPU_NUM
 
 
 # #######################################
-# Excluded INSTANCES:
+# Instâncias Excluídas:
 # #######################################
-# Here you can mention the instances the script will IGNORE and will NOT run against:
-# Use pipe "|" as a separator between each instance name.
-# e.g. Excluding: -MGMTDB, ASM instances:
+# Aqui você pode mencionar as instâncias que o script irá IGNORAR e NÃO será executado:
+# Use o pipe "|" como separador entre cada nome de instância.
+# Exemplo: Excluindo: -MGMTDB, instâncias ASM:
 
-EXL_DB="\-MGMTDB|ASM"                           #Excluded INSTANCES [Will not get reported offline].
+EXL_DB="\-MGMTDB|ASM"                           # Instâncias Excluídas [Não serão reportadas como offline].
 
 
 # ##############################
-# SCRIPT ENGINE STARTS FROM HERE ............................................
+# O MOTOR DO SCRIPT COMEÇA AQUI ............................................
 # ##############################
 
 # ###########################
-# Listing Available Databases:
+# Listando Bancos de Dados Disponíveis:
 # ###########################
 
-# Count Instance Numbers:
+# Contagem de Instâncias:
 INS_COUNT=$( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|wc -l )
 
-# Exit if No DBs are running:
+# Sair se nenhum banco de dados estiver em execução:
 if [ $INS_COUNT -eq 0 ]
  then
-   echo No Database Running !
+   echo Nenhum Banco de Dados em Execução!
    exit
 fi
 
-# If there is ONLY one DB set it as default without prompt for selection:
+# Se houver apenas um banco de dados, defini-lo como padrão sem solicitar seleção:
 if [ $INS_COUNT -eq 1 ]
  then
    export ORACLE_SID=$( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|awk '{print $NF}'|sed -e 's/ora_pmon_//g'|grep -v sed|grep -v "s///g" )
 
-# If there is more than one DB ASK the user to select:
+# Se houver mais de um banco de dados, solicitar ao usuário que selecione:
 elif [ $INS_COUNT -gt 1 ]
  then
     echo
-    echo "Select the ORACLE_SID:[Enter the number]"
+    echo "Selecione o ORACLE_SID:[Digite o número]"
     echo ---------------------
     select DB_ID in $( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|awk '{print $NF}'|sed -e 's/ora_pmon_//g'|grep -v sed|grep -v "s///g" )
      do
         if [ -z "${REPLY##[0-9]*}" ]
          then
           export ORACLE_SID=$DB_ID
-          echo Selected Instance:
+          echo Instância Selecionada:
           echo $DB_ID
           break
          else
@@ -88,112 +93,112 @@ elif [ $INS_COUNT -gt 1 ]
      done
 
 fi
-# Exit if the user selected a Non Listed Number:
+# Sair se o usuário selecionar um número não listado:
         if [ -z "${ORACLE_SID}" ]
          then
-          echo "You've Entered An INVALID ORACLE_SID"
+          echo "Você inseriu um ORACLE_SID INVÁLIDO"
           exit
         fi
 
 # #########################
-# Getting ORACLE_HOME
+# Obtendo ORACLE_HOME
 # #########################
   ORA_USER=`ps -ef|grep ${ORACLE_SID}|grep pmon|grep -v grep|egrep -v ${EXL_DB}|grep -v "\-MGMTDB"|awk '{print $1}'|tail -1`
   USR_ORA_HOME=`grep ${ORA_USER} /etc/passwd| cut -f6 -d ':'|tail -1`
 
-# SETTING ORATAB:
+# CONFIGURANDO ORATAB:
 if [ -f /etc/oratab ]
   then
   ORATAB=/etc/oratab
   export ORATAB
-## If OS is Solaris:
+## Se o sistema operacional for Solaris:
 elif [ -f /var/opt/oracle/oratab ]
   then
   ORATAB=/var/opt/oracle/oratab
   export ORATAB
 fi
 
-# ATTEMPT1: Get ORACLE_HOME using pwdx command:
+# TENTATIVA 1: Obter ORACLE_HOME usando o comando pwdx:
   PMON_PID=`pgrep  -lf _pmon_${ORACLE_SID}|awk '{print $1}'`
   export PMON_PID
   ORACLE_HOME=`pwdx ${PMON_PID}|awk '{print $NF}'|sed -e 's/\/dbs//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from PWDX is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do PWDX é ${ORACLE_HOME}"
 
-# ATTEMPT2: If ORACLE_HOME not found get it from oratab file:
+# TENTATIVA 2: Se ORACLE_HOME não for encontrado, obtê-lo do arquivo oratab:
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
-## If OS is Linux:
+## Se o sistema operacional for Linux:
 if [ -f /etc/oratab ]
   then
   ORATAB=/etc/oratab
   ORACLE_HOME=`grep -v '^\#' $ORATAB | grep -v '^$'| grep -i "^${ORACLE_SID}:" | perl -lpe'$_ = reverse' | cut -f3 | perl -lpe'$_ = reverse' |cut -f2 -d':'`
   export ORACLE_HOME
 
-## If OS is Solaris:
+## Se o sistema operacional for Solaris:
 elif [ -f /var/opt/oracle/oratab ]
   then
   ORATAB=/var/opt/oracle/oratab
   ORACLE_HOME=`grep -v '^\#' $ORATAB | grep -v '^$'| grep -i "^${ORACLE_SID}:" | perl -lpe'$_ = reverse' | cut -f3 | perl -lpe'$_ = reverse' |cut -f2 -d':'`
   export ORACLE_HOME
 fi
-#echo "ORACLE_HOME from oratab is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do oratab é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT3: If ORACLE_HOME is still not found, search for the environment variable: [Less accurate]
+# TENTATIVA 3: Se ORACLE_HOME ainda não for encontrado, procure pela variável de ambiente: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`env|grep -i ORACLE_HOME|sed -e 's/ORACLE_HOME=//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from environment  is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do ambiente é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT4: If ORACLE_HOME is not found in the environment search user's profile: [Less accurate]
+# TENTATIVA 4: Se ORACLE_HOME não for encontrado no ambiente, procure no perfil do usuário: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`grep -h 'ORACLE_HOME=\/' $USR_ORA_HOME/.bash_profile $USR_ORA_HOME/.*profile | perl -lpe'$_ = reverse' |cut -f1 -d'=' | perl -lpe'$_ = reverse'|tail -1`
   export ORACLE_HOME
-#echo "ORACLE_HOME from User Profile is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do Perfil do Usuário é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT5: If ORACLE_HOME is still not found, search for orapipe: [Least accurate]
+# TENTATIVA 5: Se ORACLE_HOME ainda não for encontrado, procure por orapipe: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`locate -i orapipe|head -1|sed -e 's/\/bin\/orapipe//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from orapipe search is ${ORACLE_HOME}"
+#echo "ORACLE_HOME da busca por orapipe é ${ORACLE_HOME}"
 fi
 
-# TERMINATE: If all above attempts failed to get ORACLE_HOME location, EXIT the script:
+# TERMINAR: Se todas as tentativas acima falharem em obter a localização do ORACLE_HOME, SAIR do script:
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
-  echo "Please export ORACLE_HOME variable in your .bash_profile file under oracle user home directory in order to get this script to run properly"
-  echo "e.g."
+  echo "Por favor, exporte a variável ORACLE_HOME no seu arquivo .bash_profile no diretório home do usuário oracle para que este script funcione corretamente"
+  echo "Exemplo:"
   echo "export ORACLE_HOME=/u01/app/oracle/product/11.2.0/db_1"
 exit
 fi
 
 # ########################################
-# Exit if the user is not the Oracle Owner:
+# Sair se o usuário não for o proprietário do Oracle:
 # ########################################
 CURR_USER=`whoami`
 	if [ ${ORA_USER} != ${CURR_USER} ]; then
 	  echo ""
-	  echo "You're Running This Sctipt with User: \"${CURR_USER}\" !!!"
-	  echo "Please Run This Script With The Right OS User: \"${ORA_USER}\""
-	  echo "Script Terminated!"
+	  echo "Você está executando este script com o usuário: \"${CURR_USER}\" !!!"
+	  echo "Por favor, execute este script com o usuário correto do sistema operacional: \"${ORA_USER}\""
+	  echo "Script Encerrado!"
 	  exit
 	fi
 
 # ###############################
-# RMAN: Script Creation:
+# RMAN: Criação do Script:
 # ###############################
-# Last RMAN Backup Info:
+# Última Informação de Backup RMAN:
 # #####################
 export NLS_DATE_FORMAT='DD-Mon-YYYY HH24:MI:SS'
 ${ORACLE_HOME}/bin/sqlplus -s '/ as sysdba' << EOF
 set linesize 170 pages 200
-PROMPT LAST 14 DAYS RMAN BACKUP DETAILS:
+PROMPT DETALHES DOS BACKUPS RMAN DOS ÚLTIMOS 14 DIAS:
 PROMPT ---------------------------------
 
 set linesize 160
@@ -201,10 +206,10 @@ set feedback off
 col START_TIME for a15
 col END_TIME for a15
 col TIME_TAKEN_DISPLAY for a10
-col INPUT_BYTES_DISPLAY heading "DATA SIZE" for a10
-col OUTPUT_BYTES_DISPLAY heading "Backup Size" for a11
-col OUTPUT_BYTES_PER_SEC_DISPLAY heading "Speed/s" for a10
-col output_device_type heading "Device_TYPE" for a11
+col INPUT_BYTES_DISPLAY heading "TAMANHO DOS DADOS" for a10
+col OUTPUT_BYTES_DISPLAY heading "Tamanho do Backup" for a11
+col OUTPUT_BYTES_PER_SEC_DISPLAY heading "Velocidade/s" for a10
+col output_device_type heading "Tipo_Dispositivo" for a11
 SELECT to_char (start_time,'DD-MON-YY HH24:MI') START_TIME, to_char(end_time,'DD-MON-YY HH24:MI') END_TIME, time_taken_display, status,
 input_type, output_device_type,input_bytes_display, output_bytes_display, output_bytes_per_sec_display,COMPRESSION_RATIO COMPRESS_RATIO
 FROM v\$rman_backup_job_details
@@ -212,12 +217,12 @@ WHERE end_time > sysdate -14;
 
 EOF
 
-# Variables:
+# Variáveis:
 export NLS_DATE_FORMAT="DD-MON-YY HH24:MI:SS"
 
-# Building the RMAN BACKUP Script:
+# Construindo o Script de Backup RMAN:
 echo;echo 
-echo Please enter the Backup Location: [e.g. /backup/DB]
+echo Por favor, insira o local do backup: [exemplo: /backup/DB]
 echo "================================"
 while read BKPLOC1
 	do
@@ -225,74 +230,74 @@ while read BKPLOC1
 		BKPLOC=${BKPLOC1}/RMANBKP_${ORACLE_SID}/`date '+%F'`
 
 		if [ ! -d "${BKPLOC}" ]; then
-        	 echo "Provided Backup Location is NOT Exist/Writable !"
+        	 echo "O local de backup fornecido NÃO existe ou não é gravável!"
 		 echo 
-	         echo "Please Provide a VALID Backup Location:"
+	         echo "Por favor, forneça um local de backup VÁLIDO:"
 		 echo "--------------------------------------"
 		else
 		 break
         	fi
 	done
 echo
-echo "Backup Location is: ${BKPLOC1}"
+echo "O local do backup é: ${BKPLOC1}"
 echo
-echo "How many CHANNELS do you want to allocate for this backup? [${CPU_NUM} CPUs Available On This Machine]"
+echo "Quantos CANAIS você deseja alocar para este backup? [${CPU_NUM} CPUs disponíveis nesta máquina]"
 echo "========================================================="
 while read CHANNEL_NUM
 	do
 		integ='^[0-9]+$'
 		if ! [[ ${CHANNEL_NUM} =~ $integ ]] ; then
-   			echo "Error: Not a valid number !"
+   			echo "Erro: Não é um número válido!"
 			echo
-			echo "Please Enter a VALID NUMBER:"
+			echo "Por favor, insira um NÚMERO VÁLIDO:"
 			echo "---------------------------"
 		else
 			break
 		fi
 	done
 echo
-echo "Number Of Channels is: ${CHANNEL_NUM}"
+echo "Número de Canais é: ${CHANNEL_NUM}"
 echo
 echo "---------------------------------------------"
-echo "COMPRESSED BACKUP will allocate SMALLER space"
-echo "but it's a bit SLOWER than REGULAR BACKUP."
+echo "O BACKUP COMPACTADO alocará MENOS espaço"
+echo "mas é um pouco mais LENTO que o BACKUP REGULAR."
 echo "---------------------------------------------"
 echo
-echo "Do you want a COMPRESSED BACKUP? [Y|N]: [Y]"
+echo "Você deseja um BACKUP COMPACTADO? [S|N]: [S]"
 echo "================================"
 while read COMPRESSED
 	do
 		case $COMPRESSED in  
-		  ""|y|Y|yes|YES|Yes) COMPRESSED=" AS COMPRESSED BACKUPSET "; echo "COMPRESSED BACKUP ENABLED.";break ;; 
-		  n|N|no|NO|No) COMPRESSED="";break ;; 
-		  *) echo "Please enter a VALID answer [Y|N]" ;;
+		  ""|s|S|sim|SIM|Sim) COMPRESSED=" AS COMPRESSED BACKUPSET "; echo "BACKUP COMPACTADO HABILITADO.";break ;; 
+		  n|N|não|NÃO|Não) COMPRESSED="";break ;; 
+		  *) echo "Por favor, insira uma resposta VÁLIDA [S|N]" ;;
 		esac
 	done
 
 echo
-echo "Do you want to ENCRYPT the BACKUP by Password? [Available in Enterprise Edition only] [Y|N]: [N]"
+echo "Você deseja CRIPTOGRAFAR o BACKUP com senha? [Disponível apenas na edição Enterprise] [S|N]: [N]"
 echo "=============================================="
 while read ENCR_BY_PASS_ANS
         do
                 case ${ENCR_BY_PASS_ANS} in
-                  y|Y|yes|YES|Yes)
+                  s|S|sim|SIM|Sim)
 		  echo
-		  echo "Please Enter the password that will be used to Encrypt the backup:"
+		  echo "Por favor, insira a senha que será usada para criptografar o backup:"
 		  echo "-----------------------------------------------------------------"
 		  read ENCR_PASS
 		  ENCR_BY_PASS="SET ENCRYPTION ON IDENTIFIED BY '${ENCR_PASS}' ONLY;"
 		  export ENCR_BY_PASS
 		  echo
-		  echo "BACKUP ENCRYPTION ENABLED."
+		  echo "CRIPTOGRAFIA DE BACKUP HABILITADA."
 		  echo
-		  echo "Later, To RESTORE this backup please use the following command to DECRYPT it, placing it just before the RESTORE Command:"
-		  echo "  e.g."
+		  echo "Posteriormente, para RESTAURAR este backup, use o seguinte comando para DESCRIPTOGRAFÁ-LO, colocando-o antes do comando RESTORE:"
+		  echo "  exemplo:"
 		  echo "  SET DECRYPTION IDENTIFIED BY '${ENCR_PASS}';"
 		  echo "  restore database ...."
 		  echo
 		  break ;;
-                  ""|n|N|no|NO|No) ENCR_BY_PASS="";break ;;
-                  *) echo "Please enter a VALID answer [Y|N]" ;;
+                  ""|n|N|não|NÃO|Não) ENCR_BY_PASS="";break ;;
+                  *) echo "Por favor, insira uma resposta VÁLIDA [S|N]" ;;
                 esac
         done
 
@@ -317,13 +322,13 @@ echo "BACKUP ${COMPRESSED} FORMAT '${BKPLOC}/CONTROLFILE_%d_%I_%t_%s_%p.bkp' REU
 echo "SQL \"ALTER DATABASE BACKUP CONTROLFILE TO TRACE AS ''${BKPLOC}/controlfile.trc'' REUSE\";" >> ${RMANSCRIPT}
 echo "SQL \"CREATE PFILE=''${BKPLOC}/init${ORACLE_SID}.ora'' FROM SPFILE\";" >> ${RMANSCRIPT}
 echo "}" >> ${RMANSCRIPT}
-echo "RMAN BACKUP SCRIPT CREATED."
+echo "SCRIPT DE BACKUP RMAN CRIADO."
 echo 
 sleep 1
-echo "Backup Location is: ${BKPLOC}"
+echo "O local do backup é: ${BKPLOC}"
 echo
 sleep 1
-echo "Starting Up RMAN Backup Job ..."
+echo "Iniciando o trabalho de backup RMAN ..."
 echo
 sleep 1
 echo "#!/bin/bash" > ${RMANSCRIPTRUNNER}
@@ -331,17 +336,17 @@ echo "nohup ${ORACLE_HOME}/bin/rman target / cmdfile=${RMANSCRIPT} | tee ${RMANL
 chmod 740 ${RMANSCRIPTRUNNER}
 source ${RMANSCRIPTRUNNER}
 echo
-echo " The RMAN backup job is currently running in the background. Disconnecting the current session will NOT interrupt the backup job :-)"
-echo " Now, viewing the backup job log:"
+echo " O trabalho de backup RMAN está sendo executado em segundo plano. Desconectar a sessão atual NÃO interromperá o trabalho de backup :-)"
+echo " Agora, visualizando o log do trabalho de backup:"
 echo
-echo "Backup Location is: ${BKPLOC}"
-echo "Check the LOGFILE: ${RMANLOG}"
+echo "O local do backup é: ${BKPLOC}"
+echo "Verifique o ARQUIVO DE LOG: ${RMANLOG}"
 echo
 
 # #############
-# END OF SCRIPT
+# FIM DO SCRIPT
 # #############
-# REPORT BUGS to: <mahmmoudadel@hotmail.com>.
-# DISCLAIMER: THIS SCRIPT IS DISTRIBUTED IN THE HOPE THAT IT WILL BE USEFUL, BUT WITHOUT ANY WARRANTY. IT IS PROVIDED "AS IS".
-# DOWNLOAD THE LATEST VERSION OF DATABASE ADMINISTRATION BUNDLE FROM: 
+# RELATE BUGS para: <mahmmoudadel@hotmail.com>.
+# AVISO LEGAL: ESTE SCRIPT É DISTRIBUÍDO NA ESPERANÇA DE QUE SEJA ÚTIL, MAS SEM QUALQUER GARANTIA. ELE É FORNECIDO "COMO ESTÁ".
+# BAIXE A VERSÃO MAIS RECENTE DO PACOTE DE ADMINISTRAÇÃO DE BANCO DE DADOS EM: 
 # http://dba-tips.blogspot.com/2014/02/oracle-database-administration-scripts.html

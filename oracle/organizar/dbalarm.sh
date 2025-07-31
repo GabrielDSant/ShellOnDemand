@@ -1,46 +1,49 @@
 # #################################################################################################
-# Checking DB & LISTENERS ALERTLOG FOR ERRORS.
-# Report OFFLINE databases.
-# Checking CPU, FILESYSTEM, TABLESPACES When exceed the THRESHOLD.
-# Report Long running operations/Active sessions on DB when CPU goe beyond defined threshold.
-# Checking BLOCKING SESSIONS ON THE DATABASE.
+# Este script realiza monitoramento de bancos de dados Oracle e do sistema operacional. 
+# Ele verifica logs de alertas de banco de dados e listeners, monitora o uso de CPU, 
+# espaço em disco, tablespaces, área de recuperação flash (FRA) e grupos de discos ASM. 
+# Também identifica sessões bloqueadas, operações longas e bancos de dados offline. 
+# Alertas são enviados por e-mail quando os limites definidos são excedidos.
+# #################################################################################################
+
+# #################################################################################################
+# Verificando logs de alertas de banco de dados e listeners para erros.
+# Relatando bancos de dados offline.
+# Verificando CPU, sistema de arquivos e tablespaces quando excedem os limites definidos.
+# Relatando operações longas/sessões ativas no banco de dados quando a CPU ultrapassa o limite definido.
+# Verificando sessões bloqueadas no banco de dados.
 VER="[5.0]"
 # #################################################################################################
 #                                       #   #     #
-# Author:       Mahmmoud ADEL         # # # #   ###
-# Created:      22-12-13            #   #   # #   #  
+# Autor:        Mahmmoud ADEL         # # # #   ###
+# Criado:       22-12-13            #   #   # #   #  
 #
-# Modified:     23-12-13 Handled non exist logs 1run
-#               14-05-14 Handled non existance of
-#                        LOG_DIR directory.
-#               18-05-14 Add Filsystem monitoring.
-#               19-05-14 Add CPU monitoring.
-#               03-12-14 Add Tablespaces monitoring
-#               08-09-15 mpstat output change in Linux 6
-#               02-04-16 Using dba_tablespace_usage_metrics To calculate MAXSIZE (11g onwards)
-#                        Recommended by Satyajit Mohapatra.
-#               10-04-16 Add Flash Recovery Area monitoring.
-#               10-04-16 Add ASM Disk Groups monitoring.
-#               15-09-16 Add "DIG MORE" feature to report.long running operations, queries
-#                        and active sessions on DB side when CPU hits the pre-defined threshold.
-#               29-12-16 Enhanced ORACLE_HOME search criteria.
-#               02-01-17 Added EXL_DB parameter to allow the user to exclude DBs from having
-#                        dbalarm script run against.
-#               04-05-17 Added the ability to disable Database Down Alert
-#                        through CHKOFFLINEDB variable.
-#               11-05-17 Added the option to exclude tablespace/ASM Diskgroup from monitoring.
-#               11-05-17 Tuned the method of reporting OFFLINE databases & checking listener log.
-#               20-07-17 Modified COLUMNS env variable to fully display top command output.
-#                        Neutralize login.sql if found in Oracle user home directory due to bugs.
-#               19-10-17 Added the function of checking goldengate logfile.
-#               11-04-18 Added the feature of monitoring the availability of specific service.
-#		28-04-18 Added the function of printing the script progress.
-#		30-04-18 Added Paranoid mode, to report EXPORT/IMPORT, ALTER SYSTEM, ALTER DATABASE 
-#			 instance STARTUP/SHUTDOWN, other DB Major activities.
-#
-#
-#
-#
+# Modificado:    23-12-13 Tratamento para logs inexistentes na primeira execução.
+#                14-05-14 Tratamento para inexistência do diretório LOG_DIR.
+#                18-05-14 Adicionado monitoramento de sistema de arquivos.
+#                19-05-14 Adicionado monitoramento de CPU.
+#                03-12-14 Adicionado monitoramento de tablespaces.
+#                08-09-15 Alteração na saída do mpstat no Linux 6.
+#                02-04-16 Usando dba_tablespace_usage_metrics para calcular MAXSIZE (11g em diante).
+#                         Recomendado por Satyajit Mohapatra.
+#                10-04-16 Adicionado monitoramento da área de recuperação flash (FRA).
+#                10-04-16 Adicionado monitoramento de grupos de discos ASM.
+#                15-09-16 Adicionado recurso "DIG MORE" para relatar operações longas, consultas
+#                         e sessões ativas no banco de dados quando a CPU atinge o limite definido.
+#                29-12-16 Melhorado o critério de busca do ORACLE_HOME.
+#                02-01-17 Adicionado parâmetro EXL_DB para permitir que o usuário exclua bancos de dados
+#                         do monitoramento do script dbalarm.
+#                04-05-17 Adicionada a capacidade de desativar alertas de banco de dados offline
+#                         através da variável CHKOFFLINEDB.
+#                11-05-17 Adicionada a opção de excluir tablespaces/grupos de discos ASM do monitoramento.
+#                11-05-17 Ajustado o método de relatar bancos de dados offline e verificar logs de listeners.
+#                20-07-17 Modificada a variável de ambiente COLUMNS para exibir totalmente a saída do comando top.
+#                         Neutralizar login.sql se encontrado no diretório home do usuário Oracle devido a bugs.
+#                19-10-17 Adicionada a função de verificar o log do Goldengate.
+#                11-04-18 Adicionado o recurso de monitorar a disponibilidade de serviços específicos.
+#                28-04-18 Adicionada a função de imprimir o progresso do script.
+#                30-04-18 Adicionado modo paranoico para relatar EXPORT/IMPORT, ALTER SYSTEM, ALTER DATABASE,
+#                         inicialização/desligamento da instância e outras atividades importantes do banco de dados.
 # #################################################################################################
 SCRIPT_NAME="dbalarm${VER}"
 SRV_NAME=`uname -n`
@@ -67,67 +70,67 @@ export LNXVER
 fi
 
 # #########################
-# THRESHOLDS:
+# LIMITES:
 # #########################
-# Modify the THRESHOLDS to the value you prefer:
+# Modifique os limites para os valores que preferir:
 
-FSTHRESHOLD=95          # THRESHOLD FOR FILESYSTEM %USED [OS]
-CPUTHRESHOLD=95         # THRESHOLD FOR CPU %UTILIZATION [OS]
-TBSTHRESHOLD=95         # THRESHOLD FOR TABLESPACE %USED [DB]
-FRATHRESHOLD=95         # THRESHOLD FOR FRA %USED        [DB]
-ASMTHRESHOLD=95         # THRESHOLD FOR ASM DISK GROUPS  [DB]
-BLOCKTHRESHOLD=1        # THRESHOLD FOR BLOCKED SESSIONS#[DB]
-CHKLISTENER=Y           # Enable/Disable Checking Listeners: [Default Enabled]	[DB]
-CHKOFFLINEDB=Y          # Enable/Disable Database Down Alert: [Default Enabled]	[DB]
-CHKGOLDENGATE=N         # Enable/Disable Goldengate Alert: [Default Disabled]	[GG]
-CPUDIGMORE=Y            # Break down to DB Active sessions when CPU hit the threshold: [RECOMMENDED TO SET =N on VERY BUSY environments]	[DB]
-SERVICEMON=""           # Monitor Specific Named Services. e.g. SERVICEMON="'ORCL_RO','ERP_SRVC','SAP_SERVICE'"					[DB]
-PARANOIDMODE=N          # Paranoid mode will report more events like export/import, instance shutdown/startup. [Default Disabled]		[DB]
+FSTHRESHOLD=95          # LIMITE PARA %USADO DO SISTEMA DE ARQUIVOS [OS]
+CPUTHRESHOLD=95         # LIMITE PARA %UTILIZAÇÃO DA CPU [OS]
+TBSTHRESHOLD=95         # LIMITE PARA %USADO DO TABLESPACE [DB]
+FRATHRESHOLD=95         # LIMITE PARA %USADO DA FRA [DB]
+ASMTHRESHOLD=95         # LIMITE PARA %USADO DOS GRUPOS DE DISCO ASM [DB]
+BLOCKTHRESHOLD=1        # LIMITE PARA SESSÕES BLOQUEADAS [DB]
+CHKLISTENER=Y           # Habilitar/Desabilitar Verificação de Listeners: [Padrão Habilitado]	[DB]
+CHKOFFLINEDB=Y          # Habilitar/Desabilitar Alerta de Banco de Dados Offline: [Padrão Habilitado]	[DB]
+CHKGOLDENGATE=N         # Habilitar/Desabilitar Alerta do Goldengate: [Padrão Desabilitado]	[GG]
+CPUDIGMORE=Y            # Detalhar Sessões Ativas do DB quando a CPU atingir o limite: [RECOMENDADO DEFINIR =N em ambientes MUITO OCUPADOS]	[DB]
+SERVICEMON=""           # Monitorar Serviços Nomeados Específicos. Ex.: SERVICEMON="'ORCL_RO','ERP_SRVC','SAP_SERVICE'"					[DB]
+PARANOIDMODE=N          # Modo paranoico relatará mais eventos como export/import, inicialização/desligamento da instância. [Padrão Desabilitado]		[DB]
 
 # #######################################
-# Excluded INSTANCES:
+# Instâncias Excluídas:
 # #######################################
-# Here you can mention the instances dbalarm will IGNORE and will NOT run against:
-# Use pipe "|" as a separator between each instance name.
-# e.g. Excluding: -MGMTDB, ASM instances:
+# Aqui você pode mencionar as instâncias que o dbalarm irá IGNORAR e NÃO será executado:
+# Use o separador "|" entre cada nome de instância.
+# Ex.: Excluindo: -MGMTDB, instâncias ASM:
 
-EXL_DB="\-MGMTDB|ASM"                   #Excluded INSTANCES [Will not get reported offline].
+EXL_DB="\-MGMTDB|ASM"                   #Instâncias Excluídas [Não serão relatadas como offline].
 
 # #########################
-# Excluded TABLESPACES:
+# Tablespaces Excluídos:
 # #########################
-# Here you can exclude one or more tablespace if you don't want to be alerted when they hit the threshold:
-# e.g. to exclude "UNDOTBS1" modify the following variable in this fashion without removing "donotremove" value:
+# Aqui você pode excluir um ou mais tablespaces se não quiser ser alertado quando atingirem o limite:
+# Ex.: para excluir "UNDOTBS1" modifique a variável a seguir sem remover o valor "donotremove":
 # EXL_TBS="donotremove|UNDOTBS1"
 EXL_TBS="donotremove"
 
 # #########################
-# Excluded ASM Diskgroups:
+# Grupos de Discos ASM Excluídos:
 # #########################
-# Here you can exclude one or more ASM Disk Groups if you don't want to be alerted when they hit the threshold:
-# e.g. to exclude "FRA" DISKGROUP modify the following variable in this fashion without removing "donotremove" value:
+# Aqui você pode excluir um ou mais Grupos de Discos ASM se não quiser ser alertado quando atingirem o limite:
+# Ex.: para excluir o DISKGROUP "FRA" modifique a variável a seguir sem remover o valor "donotremove":
 # EXL_DISK_GROUP="donotremove|FRA"
 EXL_DISK_GROUP="donotremove"
 
 # #########################
-# Excluded ERRORS:
+# Erros Excluídos:
 # #########################
-# Here you can exclude the errors that you don't want to be alerted when they appear in the logs:
-# Use pipe "|" between each error.
+# Aqui você pode excluir os erros que não deseja ser alertado quando aparecerem nos logs:
+# Use o separador "|" entre cada erro.
 
-EXL_ALERT_ERR="ORA-2396|TNS-00507|TNS-12502|TNS-12560|TNS-12537|TNS-00505"              #Excluded ALERTLOG ERRORS [Will not get reported].
-EXL_LSNR_ERR="TNS-00507|TNS-12502|TNS-12560|TNS-12537|TNS-00505"                        #Excluded LISTENER ERRORS [Will not get reported].
-EXL_GG_ERR="donotremove"                                                                #Excluded GoldenGate ERRORS [Will not get reported].
+EXL_ALERT_ERR="ORA-2396|TNS-00507|TNS-12502|TNS-12560|TNS-12537|TNS-00505"              #Erros de ALERTLOG Excluídos [Não serão relatados].
+EXL_LSNR_ERR="TNS-00507|TNS-12502|TNS-12560|TNS-12537|TNS-00505"                        #Erros de LISTENER Excluídos [Não serão relatados].
+EXL_GG_ERR="donotremove"                                                                #Erros do GoldenGate Excluídos [Não serão relatados].
 
 # ################################
-# Excluded FILESYSTEM/MOUNT POINTS:
+# Sistemas de Arquivos/Pontos de Montagem Excluídos:
 # ################################
-# Here you can exclude specific filesystems/mount points from being reported by dbalarm:
-# e.g. Excluding: /dev/mapper, /dev/asm mount points:
+# Aqui você pode excluir sistemas de arquivos/pontos de montagem específicos de serem relatados pelo dbalarm:
+# Ex.: Excluindo: /dev/mapper, /dev/asm pontos de montagem:
 
-EXL_FS="\/dev\/mapper\/|\/dev\/asm\/"                                                   #Excluded mount points [Will be skipped during the check].
+EXL_FS="\/dev\/mapper\/|\/dev\/asm\/"                                                   #Pontos de montagem Excluídos [Serão ignorados durante a verificação].
 
-# Workaround df command output bug "`/root/.gvfs': Permission denied"
+# Solução para o bug de saída do comando df "`/root/.gvfs': Permission denied"
 if [ -f /etc/redhat-release ]
  then
   export DF='df -hPx fuse.gvfs-fuse-daemon'
@@ -136,15 +139,15 @@ if [ -f /etc/redhat-release ]
 fi
 
 # #########################
-# Checking The FILESYSTEM:
+# Verificando o Sistema de Arquivos:
 # #########################
 
-echo "Checking FILESYSTEM Utilization ..."
+echo "Verificando Utilização do Sistema de Arquivos ..."
 
-# Report Partitions that reach the threshold of Used Space:
+# Relatar Partições que atingem o limite de Espaço Usado:
 
 FSLOG=/tmp/filesystem_DBA_BUNDLE.log
-echo "[Reported By ${SCRIPT_NAME} Script]"       > ${FSLOG}
+echo "[Relatado pelo script ${SCRIPT_NAME}]"       > ${FSLOG}
 echo ""                                         >> ${FSLOG}
 ${DF}                                           >> ${FSLOG}
 ${DF} | grep -v "^Filesystem" |awk '{print substr($0, index($0, $2))}'| egrep -v "${EXL_FS}"|awk '{print $(NF-1)" "$NF}'| while read OUTPUT
@@ -153,7 +156,7 @@ ${DF} | grep -v "^Filesystem" |awk '{print substr($0, index($0, $2))}'| egrep -v
         FILESYS=`echo ${OUTPUT}|awk '{print $2}'`
                 if [ ${PRCUSED} -ge ${FSTHRESHOLD} ]
                  then
-mail -s "ALARM: Filesystem [${FILESYS}] on Server [${SRV_NAME}] has reached ${PRCUSED}% of USED space" $MAIL_LIST < ${FSLOG}
+mail -s "ALERTA: Sistema de Arquivos [${FILESYS}] no Servidor [${SRV_NAME}] atingiu ${PRCUSED}% de espaço usado" $MAIL_LIST < ${FSLOG}
                 fi
    done
 
@@ -161,16 +164,16 @@ rm -f ${FSLOG}
 
 
 # #############################
-# Checking The CPU Utilization:
+# Verificando a Utilização da CPU:
 # #############################
 
-echo "Checking CPU Utilization ..."
+echo "Verificando Utilização da CPU ..."
 
-# Report CPU Utilization if reach >= CPUTHRESHOLD:
+# Relatar Utilização da CPU se atingir >= CPUTHRESHOLD:
 OS_TYPE=`uname -s`
 CPUUTLLOG=/tmp/CPULOG_DBA_BUNDLE.log
 
-# Getting CPU utilization in last 5 seconds:
+# Obtendo a utilização da CPU nos últimos 5 segundos:
 case `uname` in
         Linux ) CPU_REPORT_SECTIONS=`iostat -c 1 5 | sed -e 's/,/./g' | tr -s ' ' ';' | sed '/^$/d' | tail -1 | grep ';' -o | wc -l`
                 CPU_COUNT=`cat /proc/cpuinfo|grep processor|wc -l`
@@ -198,10 +201,10 @@ case `uname` in
         ;;
         esac
 
-# Getting Utilized CPU (100-%IDLE):
+# Obtendo Utilização da CPU (100-%IDLE):
 CPU_UTL_FLOAT=`echo "scale=2; 100-($CPU_IDLE)"|bc`
 
-# Convert the average from float number to integer:
+# Converter a média de número flutuante para inteiro:
 CPU_UTL=${CPU_UTL_FLOAT%.*}
 
         if [ -z ${CPU_UTL} ]
@@ -209,103 +212,103 @@ CPU_UTL=${CPU_UTL_FLOAT%.*}
           CPU_UTL=1
         fi
 
-# Compare the current CPU utilization with the Threshold:
+# Comparar a utilização atual da CPU com o Limite:
 CPULOG=/tmp/top_processes_DBA_BUNDLE.log
 
         if [ ${CPU_UTL} -ge ${CPUTHRESHOLD} ]
          then
-                export COLUMNS=300           #Increase the COLUMNS width to display the full output [Default is 167]
-                echo "CPU STATS:"         >  ${CPULOG}
+                export COLUMNS=300           #Aumentar a largura das COLUNAS para exibir a saída completa [Padrão é 167]
+                echo "ESTATÍSTICAS DA CPU:"         >  ${CPULOG}
                 echo "========="          >> ${CPULOG}
                 mpstat 1 5                >> ${CPULOG}
                 echo ""                   >> ${CPULOG}
-                echo "VMSTAT Output:"     >> ${CPULOG}
+                echo "Saída do VMSTAT:"     >> ${CPULOG}
                 echo "============="      >> ${CPULOG}
-                echo "[If the runqueue number in the (r) column exceeds the number of CPUs [${CPU_COUNT}] this indicates a CPU bottleneck on the system]." >> ${CPULOG}
+                echo "[Se o número da fila de execução na coluna (r) exceder o número de CPUs [${CPU_COUNT}] isso indica um gargalo de CPU no sistema]." >> ${CPULOG}
                 echo ""                   >> ${CPULOG}
                 vmstat 2 5                >> ${CPULOG}
                 echo ""                   >> ${CPULOG}
-                echo "Top 10 Processes:"  >> ${CPULOG}
+                echo "Top 10 Processos:"  >> ${CPULOG}
                 echo "================"   >> ${CPULOG}
                 echo ""                   >> ${CPULOG}
                 top -c -b -n 1|head -17   >> ${CPULOG}
-                unset COLUMNS                #Set COLUMNS width back to the default value
+                unset COLUMNS                #Definir a largura das COLUNAS de volta ao valor padrão
                 #ps -eo pcpu,pid,user,args | sort -k 1 -r | head -11 >> ${CPULOG}
-# Check ACTIVE SESSIONS on DB side:
+# Verificar SESSÕES ATIVAS no lado do DB:
 for ORACLE_SID in $( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|awk '{print $NF}'|sed -e 's/ora_pmon_//g'|grep -v sed|grep -v "s///g" )
    do
     export ORACLE_SID
 
-# Getting ORACLE_HOME:
+# Obtendo ORACLE_HOME:
 # ###################
   ORA_USER=`ps -ef|grep ${ORACLE_SID}|grep pmon|egrep -v ${EXL_DB}|awk '{print $1}'|tail -1`
   USR_ORA_HOME=`grep ${ORA_USER} /etc/passwd| cut -f6 -d ':'|tail -1`
 
-# SETTING ORATAB:
+# CONFIGURANDO ORATAB:
 if [ -f /etc/oratab ]
   then
   ORATAB=/etc/oratab
   export ORATAB
-## If OS is Solaris:
+## Se o SO for Solaris:
 elif [ -f /var/opt/oracle/oratab ]
   then
   ORATAB=/var/opt/oracle/oratab
   export ORATAB
 fi
 
-# ATTEMPT1: Get ORACLE_HOME using pwdx command:
+# TENTATIVA1: Obter ORACLE_HOME usando o comando pwdx:
   PMON_PID=`pgrep  -lf _pmon_${ORACLE_SID}|awk '{print $1}'`
   export PMON_PID
   ORACLE_HOME=`pwdx ${PMON_PID}|awk '{print $NF}'|sed -e 's/\/dbs//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from PWDX is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do PWDX é ${ORACLE_HOME}"
 
-# ATTEMPT2: If ORACLE_HOME not found get it from oratab file:
+# TENTATIVA2: Se ORACLE_HOME não for encontrado, obtê-lo do arquivo oratab:
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
-## If OS is Linux:
+## Se o SO for Linux:
 if [ -f /etc/oratab ]
   then
   ORATAB=/etc/oratab
   ORACLE_HOME=`grep -v '^\#' $ORATAB | grep -v '^$'| grep -i "^${ORACLE_SID}:" | perl -lpe'$_ = reverse' | cut -f3 | perl -lpe'$_ = reverse' |cut -f2 -d':'`
   export ORACLE_HOME
 
-## If OS is Solaris:
+## Se o SO for Solaris:
 elif [ -f /var/opt/oracle/oratab ]
   then
   ORATAB=/var/opt/oracle/oratab
   ORACLE_HOME=`grep -v '^\#' $ORATAB | grep -v '^$'| grep -i "^${ORACLE_SID}:" | perl -lpe'$_ = reverse' | cut -f3 | perl -lpe'$_ = reverse' |cut -f2 -d':'`
   export ORACLE_HOME
 fi
-#echo "ORACLE_HOME from oratab is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do oratab é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT3: If ORACLE_HOME is still not found, search for the environment variable: [Less accurate]
+# TENTATIVA3: Se ORACLE_HOME ainda não for encontrado, procure pela variável de ambiente: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`env|grep -i ORACLE_HOME|sed -e 's/ORACLE_HOME=//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from environment  is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do ambiente é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT4: If ORACLE_HOME is not found in the environment search user's profile: [Less accurate]
+# TENTATIVA4: Se ORACLE_HOME não for encontrado no ambiente, procure no perfil do usuário: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`grep -h 'ORACLE_HOME=\/' $USR_ORA_HOME/.bash_profile $USR_ORA_HOME/.*profile | perl -lpe'$_ = reverse' |cut -f1 -d'=' | perl -lpe'$_ = reverse'|tail -1`
   export ORACLE_HOME
-#echo "ORACLE_HOME from User Profile is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do Perfil do Usuário é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT5: If ORACLE_HOME is still not found, search for orapipe: [Least accurate]
+# TENTATIVA5: Se ORACLE_HOME ainda não for encontrado, procure por orapipe: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`locate -i orapipe|head -1|sed -e 's/\/bin\/orapipe//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from orapipe search is ${ORACLE_HOME}"
+#echo "ORACLE_HOME da busca por orapipe é ${ORACLE_HOME}"
 fi
 
 
-# Check Long Running Transactions if CPUDIGMORE=Y:
+# Verificar Transações Longas se CPUDIGMORE=Y:
                  case ${CPUDIGMORE} in
                  y|Y|yes|YES|Yes)
 ${ORACLE_HOME}/bin/sqlplus -s '/ as sysdba' << EOF
@@ -314,7 +317,7 @@ SPOOL ${CPULOG} APPEND
 prompt
 PROMPT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Prompt ACTIVE SESSIONS ON DATABASE [${ORACLE_SID}]:
+Prompt SESSÕES ATIVAS NO BANCO DE DADOS [${ORACLE_SID}]:
 PROMPT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 set feedback off linesize 200 pages 1000
@@ -345,19 +348,19 @@ order by "I|BLKD_BY" desc,w.event,"INS|USER|SID,SER|MACHIN|MODUL","ST|WA_ST|WAIT
 PROMPT
 PROMPT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-PROMPT SESSIONS STATUS: [Local Instance]
+PROMPT STATUS DAS SESSÕES: [Instância Local]
 PROMPT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 set pages 0
-select 'ALL:        '||count(*)         from v\$session;
+select 'TODAS:        '||count(*)         from v\$session;
 select 'BACKGROUND: '||count(*)         from v\$session where USERNAME is null;
-select 'INACTIVE:   '||count(*)         from v\$session where USERNAME is not null and status='INACTIVE';
-select 'ACTIVE:     '||count(*)         from v\$session where USERNAME is not null and status='ACTIVE';
+select 'INATIVAS:   '||count(*)         from v\$session where USERNAME is not null and status='INACTIVE';
+select 'ATIVAS:     '||count(*)         from v\$session where USERNAME is not null and status='ACTIVE';
 
 prompt
 PROMPT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Prompt Long Running Operations On Database [${ORACLE_SID}]:
+Prompt Operações Longas no Banco de Dados [${ORACLE_SID}]:
 PROMPT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 set linesize 200 pages 1000
@@ -376,7 +379,7 @@ col "USERNAME| SID,SERIAL#"             for a26
 PROMPT
 PROMPT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-PROMPT Queries Running Since More Than 1 Hour On Database [${ORACLE_SID}]:
+PROMPT Consultas Executando Há Mais de 1 Hora no Banco de Dados [${ORACLE_SID}]:
 PROMPT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 set lines 200
@@ -392,14 +395,14 @@ last_call_et/60/60 "DURATION_HOURS"
 from v\$session where
 username is not null 
 and module is not null
--- 1 is the number of hours
+-- 1 é o número de horas
 and last_call_et > 60*60*1
 and status = 'ACTIVE';
 
 PROMPT
 PROMPT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-PROMPT RUNNING JOBS On Database [${ORACLE_SID}]:
+PROMPT JOBS EM EXECUÇÃO no Banco de Dados [${ORACLE_SID}]:
 PROMPT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 col INS                         for 999
@@ -424,125 +427,125 @@ EOF
                 ;;
                 esac
   done
-mail -s "ALERT: CPU Utilization on Server [${SRV_NAME}] has reached [${CPU_UTL}%]" $MAIL_LIST < ${CPULOG}
+mail -s "ALERTA: Utilização da CPU no Servidor [${SRV_NAME}] atingiu [${CPU_UTL}%]" $MAIL_LIST < ${CPULOG}
         fi
 
 rm -f ${CPUUTLLOG}
 rm -f ${CPULOG}
 
-echo "CPU CHECK Completed"
+echo "VERIFICAÇÃO DA CPU Concluída"
 
 # #########################
-# Getting ORACLE_SID:
+# Obtendo ORACLE_SID:
 # #########################
-# Exit with sending Alert mail if No DBs are running:
+# Sair enviando e-mail de alerta se nenhum DB estiver em execução:
 INS_COUNT=$( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|wc -l )
         if [ $INS_COUNT -eq 0 ]
          then
-         echo "[Reported By ${SCRIPT_NAME} Script]"                                              > /tmp/oracle_processes_DBA_BUNDLE.log
+         echo "[Relatado pelo script ${SCRIPT_NAME}]"                                              > /tmp/oracle_processes_DBA_BUNDLE.log
          echo " "                                                                               >> /tmp/oracle_processes_DBA_BUNDLE.log
-         echo "Current running INSTANCES on server [${SRV_NAME}]:"                              >> /tmp/oracle_processes_DBA_BUNDLE.log
+         echo "Instâncias em execução no momento no servidor [${SRV_NAME}]:"                              >> /tmp/oracle_processes_DBA_BUNDLE.log
          echo "***************************************************"                             >> /tmp/oracle_processes_DBA_BUNDLE.log
          ps -ef|grep -v grep|grep pmon                                                          >> /tmp/oracle_processes_DBA_BUNDLE.log
          echo " "                                                                               >> /tmp/oracle_processes_DBA_BUNDLE.log
-         echo "Current running LISTENERS on server [${SRV_NAME}]:"                              >> /tmp/oracle_processes_DBA_BUNDLE.log
+         echo "Listeners em execução no momento no servidor [${SRV_NAME}]:"                              >> /tmp/oracle_processes_DBA_BUNDLE.log
          echo "***************************************************"                             >> /tmp/oracle_processes_DBA_BUNDLE.log
          ps -ef|grep -v grep|grep tnslsnr                                                       >> /tmp/oracle_processes_DBA_BUNDLE.log
-mail -s "ALARM: No Databases Are Running on Server: $SRV_NAME !!!" $MAIL_LIST                    < /tmp/oracle_processes_DBA_BUNDLE.log
+mail -s "ALERTA: Nenhum Banco de Dados Está em Execução no Servidor: $SRV_NAME !!!" $MAIL_LIST                    < /tmp/oracle_processes_DBA_BUNDLE.log
          rm -f /tmp/oracle_processes_DBA_BUNDLE.log
          exit
         fi
 
 # #########################
-# Setting ORACLE_SID:
+# Configurando ORACLE_SID:
 # #########################
-echo "SETTING ORACLE_SID"
+echo "CONFIGURANDO ORACLE_SID"
 for ORACLE_SID in $( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|awk '{print $NF}'|sed -e 's/ora_pmon_//g'|grep -v sed|grep -v "s///g" )
    do
     export ORACLE_SID
 
 # #########################
-# Getting ORACLE_HOME
+# Obtendo ORACLE_HOME
 # #########################
-echo "Getting ORACLE HOME"
+echo "Obtendo ORACLE HOME"
   ORA_USER=`ps -ef|grep ${ORACLE_SID}|grep pmon|grep -v grep|egrep -v ${EXL_DB}|awk '{print $1}'|tail -1`
   USR_ORA_HOME=`grep ${ORA_USER} /etc/passwd| cut -f6 -d ':'|tail -1`
 
-# SETTING ORATAB:
+# CONFIGURANDO ORATAB:
 if [ -f /etc/oratab ]
   then
   ORATAB=/etc/oratab
   export ORATAB
-## If OS is Solaris:
+## Se o SO for Solaris:
 elif [ -f /var/opt/oracle/oratab ]
   then
   ORATAB=/var/opt/oracle/oratab
   export ORATAB
 fi
 
-# ATTEMPT1: Get ORACLE_HOME using pwdx command:
+# TENTATIVA1: Obter ORACLE_HOME usando o comando pwdx:
   PMON_PID=`pgrep  -lf _pmon_${ORACLE_SID}|awk '{print $1}'`
   export PMON_PID
   ORACLE_HOME=`pwdx ${PMON_PID}|awk '{print $NF}'|sed -e 's/\/dbs//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from PWDX is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do PWDX é ${ORACLE_HOME}"
 
-# ATTEMPT2: If ORACLE_HOME not found get it from oratab file:
+# TENTATIVA2: Se ORACLE_HOME não for encontrado, obtê-lo do arquivo oratab:
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
-## If OS is Linux:
+## Se o SO for Linux:
 if [ -f /etc/oratab ]
   then
   ORATAB=/etc/oratab
   ORACLE_HOME=`grep -v '^\#' $ORATAB | grep -v '^$'| grep -i "^${ORACLE_SID}:" | perl -lpe'$_ = reverse' | cut -f3 | perl -lpe'$_ = reverse' |cut -f2 -d':'`
   export ORACLE_HOME
 
-## If OS is Solaris:
+## Se o SO for Solaris:
 elif [ -f /var/opt/oracle/oratab ]
   then
   ORATAB=/var/opt/oracle/oratab
   ORACLE_HOME=`grep -v '^\#' $ORATAB | grep -v '^$'| grep -i "^${ORACLE_SID}:" | perl -lpe'$_ = reverse' | cut -f3 | perl -lpe'$_ = reverse' |cut -f2 -d':'`
   export ORACLE_HOME
 fi
-#echo "ORACLE_HOME from oratab is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do oratab é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT3: If ORACLE_HOME is still not found, search for the environment variable: [Less accurate]
+# TENTATIVA3: Se ORACLE_HOME ainda não for encontrado, procure pela variável de ambiente: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`env|grep -i ORACLE_HOME|sed -e 's/ORACLE_HOME=//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from environment  is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do ambiente é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT4: If ORACLE_HOME is not found in the environment search user's profile: [Less accurate]
+# TENTATIVA4: Se ORACLE_HOME não for encontrado no ambiente, procure no perfil do usuário: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`grep -h 'ORACLE_HOME=\/' $USR_ORA_HOME/.bash_profile $USR_ORA_HOME/.*profile | perl -lpe'$_ = reverse' |cut -f1 -d'=' | perl -lpe'$_ = reverse'|tail -1`
   export ORACLE_HOME
-#echo "ORACLE_HOME from User Profile is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do Perfil do Usuário é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT5: If ORACLE_HOME is still not found, search for orapipe: [Least accurate]
+# TENTATIVA5: Se ORACLE_HOME ainda não for encontrado, procure por orapipe: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`locate -i orapipe|head -1|sed -e 's/\/bin\/orapipe//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from orapipe search is ${ORACLE_HOME}"
+#echo "ORACLE_HOME da busca por orapipe é ${ORACLE_HOME}"
 fi
 
-# TERMINATE: If all above attempts failed to get ORACLE_HOME location, EXIT the script:
+# TERMINAR: Se todas as tentativas acima falharem em obter a localização do ORACLE_HOME, SAIR do script:
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
-  echo "Please export ORACLE_HOME variable in your .bash_profile file under oracle user home directory in order to get this script to run properly"
-  echo "e.g."
+  echo "Por favor, exporte a variável ORACLE_HOME no seu arquivo .bash_profile no diretório home do usuário oracle para que este script funcione corretamente"
+  echo "Ex.:"
   echo "export ORACLE_HOME=/u01/app/oracle/product/11.2.0/db_1"
-mail -s "dbalarm script on Server [${SRV_NAME}] failed to find ORACLE_HOME, Please export ORACLE_HOME variable in your .bash_profile file under oracle user home directory" $MAIL_LIST < /dev/null
+mail -s "O script dbalarm no Servidor [${SRV_NAME}] falhou ao encontrar ORACLE_HOME, Por favor, exporte a variável ORACLE_HOME no seu arquivo .bash_profile no diretório home do usuário oracle" $MAIL_LIST < /dev/null
 exit
 fi
 
 # #########################
-# Variables:
+# Variáveis:
 # #########################
 export PATH=$PATH:${ORACLE_HOME}/bin
 export LOG_DIR=${USR_ORA_HOME}/BUNDLE_Logs
@@ -559,10 +562,10 @@ chmod -R go-rwx ${LOG_DIR}
         fi
 
 # ##########################
-# Neutralize login.sql file: [Bug Fix]
+# Neutralizar arquivo login.sql: [Correção de Bug]
 # ##########################
-# Existance of login.sql file under Oracle user Linux home directory eliminates many functions during the execution of this script from crontab:
-echo "Neutralizing login.sql if found"
+# A existência do arquivo login.sql no diretório home do usuário Oracle no Linux elimina muitas funções durante a execução deste script a partir do crontab:
+echo "Neutralizando login.sql se encontrado"
 
         if [ -f ${USR_ORA_HOME}/login.sql ]
          then
@@ -570,10 +573,10 @@ mv ${USR_ORA_HOME}/login.sql   ${USR_ORA_HOME}/login.sql_NeutralizedBy${SCRIPT_N
         fi
 
 # ########################
-# Getting ORACLE_BASE:
+# Obtendo ORACLE_BASE:
 # ########################
-echo "Getting ORACLE BASE"
-# Get ORACLE_BASE from user's profile if it EMPTY:
+echo "Obtendo ORACLE BASE"
+# Obter ORACLE_BASE do perfil do usuário se estiver VAZIO:
 
 if [ -z "${ORACLE_BASE}" ]
  then
@@ -581,9 +584,9 @@ if [ -z "${ORACLE_BASE}" ]
 fi
 
 # #########################
-# Getting DB_NAME:
+# Obtendo DB_NAME:
 # #########################
-echo "Setting DB_NAME"
+echo "Configurando DB_NAME"
 VAL1=$(${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 set pages 0 feedback off;
 prompt
@@ -591,13 +594,13 @@ SELECT name from v\$database
 exit;
 EOF
 )
-# Getting DB_NAME in Uppercase & Lowercase:
+# Obtendo DB_NAME em maiúsculas e minúsculas:
 DB_NAME_UPPER=`echo $VAL1| perl -lpe'$_ = reverse' |awk '{print $1}'|perl -lpe'$_ = reverse'`
 DB_NAME_LOWER=$( echo "$DB_NAME_UPPER" | tr -s  '[:upper:]' '[:lower:]' )
 export DB_NAME_UPPER
 export DB_NAME_LOWER
 
-# DB_NAME is Uppercase or Lowercase?:
+# DB_NAME está em maiúsculas ou minúsculas?:
 
      if [ -d $ORACLE_HOME/diagnostics/${DB_NAME_LOWER} ]
         then
@@ -607,9 +610,9 @@ export DB_NAME_LOWER
      fi
 
 # ###################
-# Getting DB Version:
+# Obtendo Versão do DB:
 # ###################
-echo "Checking DB Version"
+echo "Verificando Versão do DB"
 VAL311=$(${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 set pages 0 feedback off;
 prompt
@@ -621,9 +624,9 @@ DB_VER=`echo $VAL311|perl -lpe'$_ = reverse' |awk '{print $1}'|perl -lpe'$_ = re
 
 
 # #####################
-# Getting DB Block Size:
+# Obtendo Tamanho do Bloco do DB:
 # #####################
-echo "Checking DB Block Size"
+echo "Verificando Tamanho do Bloco do DB"
 VAL312=$(${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 set pages 0 feedback off;
 prompt
@@ -635,9 +638,9 @@ blksize=`echo $VAL312|perl -lpe'$_ = reverse' |awk '{print $1}'|perl -lpe'$_ = r
 
 
 # #####################
-# Getting DB ROLE:
+# Obtendo Função do DB:
 # #####################
-echo "Checking DB Role"
+echo "Verificando Função do DB"
 VAL312=$(${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 set pages 0 feedback off;
 prompt
@@ -654,7 +657,7 @@ DB_ROLE=`echo $VAL312|perl -lpe'$_ = reverse' |awk '{print $1}'|perl -lpe'$_ = r
 
 
 # ######################################
-# Check Flash Recovery Area Utilization:
+# Verificar Utilização da Área de Recuperação Flash:
 # ######################################
 VAL318=$(${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 set pages 0 feedback off;
@@ -665,7 +668,7 @@ EOF
 )
 FRA_LOC=`echo ${VAL318}|perl -lpe'$_ = reverse' |awk '{print $1}'|perl -lpe'$_ = reverse'|cut -f1 -d '.'`
 
-# If FRA is configured, check the its utilization:
+# Se FRA estiver configurado, verificar sua utilização:
   if [ ! -z ${FRA_LOC} ]
    then
 
@@ -679,19 +682,19 @@ EOF
 
 FRAPRCUSED=`echo ${FRACHK1}|perl -lpe'$_ = reverse' |awk '{print $1}'|perl -lpe'$_ = reverse'|cut -f1 -d '.'`
 
-# Convert FRAPRCUSED from float number to integer:
+# Converter FRAPRCUSED de número flutuante para inteiro:
 FRAPRCUSED=${FRAPRCUSED%.*}
         if [ -z ${FRAPRCUSED} ]
          then
           FRAPRCUSED=1
         fi
 
-# If FRA %USED >= the defined threshold then send an email alert:
+# Se FRA %USADO >= o limite definido, enviar um alerta por e-mail:
 INTEG='^[0-9]+$'
-        # Verify that FRAPRCUSED value is a valid number:
+        # Verificar se o valor de FRAPRCUSED é um número válido:
         if [[ ${FRAPRCUSED} =~ ${INTEG} ]]
          then
-echo "Checking FRA For [${ORACLE_SID}] ..."
+echo "Verificando FRA para [${ORACLE_SID}] ..."
                if [ ${FRAPRCUSED} -ge ${FRATHRESHOLD} ]
                  then
 FRA_RPT=${LOG_DIR}/FRA_REPORT.log
@@ -703,7 +706,7 @@ col TOTAL_MB for 99999999999999999
 col FREE_MB for  99999999999999999
 SPOOL ${FRA_RPT}
 PROMPT
-PROMPT FLASH RECOVER AREA Utilization:
+PROMPT Utilização da Área de Recuperação Flash:
 PROMPT -----------------------------------------------
 
 SELECT NAME,SPACE_LIMIT/1024/1024 TOTAL_MB,(SPACE_LIMIT - SPACE_USED + SPACE_RECLAIMABLE)/1024/1024 AS FREE_MB,
@@ -711,7 +714,7 @@ ROUND((SPACE_USED - SPACE_RECLAIMABLE)/SPACE_LIMIT * 100, 1) AS "%FULL"
 FROM V\$RECOVERY_FILE_DEST;
 
 PROMPT
-PROMPT FRA COMPONENTS:
+PROMPT COMPONENTES DA FRA:
 PROMPT ------------------------------
 
 select * from v\$flash_recovery_area_usage;
@@ -720,7 +723,7 @@ exit;
 EOF
 )
 
-mail -s "ALERT: FRA has reached ${FRAPRCUSED}% on database [${DB_NAME_UPPER}] on Server [${SRV_NAME}]" $MAIL_LIST < ${FRA_RPT}
+mail -s "ALERTA: FRA atingiu ${FRAPRCUSED}% no banco de dados [${DB_NAME_UPPER}] no Servidor [${SRV_NAME}]" $MAIL_LIST < ${FRA_RPT}
                fi
         fi
 
@@ -730,9 +733,9 @@ rm -f ${FRA_RPT}
 
 
 # ################################
-# Check ASM Diskgroup Utilization:
+# Verificar Utilização do Grupo de Discos ASM:
 # ################################
-echo "Checking ASM Diskgroup Utilization ..."
+echo "Verificando Utilização do Grupo de Discos ASM ..."
 VAL314=$(${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 set pages 0 feedback off;
 prompt
@@ -742,10 +745,10 @@ EOF
 )
 ASM_GROUP_COUNT=`echo ${VAL314}|perl -lpe'$_ = reverse' |awk '{print $1}'|perl -lpe'$_ = reverse'|cut -f1 -d '.'`
 
-# If ASM DISKS Are Exist, Check the size utilization:
+# Se os DISCOS ASM existirem, verificar a utilização do tamanho:
   if [ ${ASM_GROUP_COUNT} -gt 0 ]
    then
-echo "Checking ASM on [${ORACLE_SID}] ..."
+echo "Verificando ASM em [${ORACLE_SID}] ..."
 
 ASM_UTL=${LOG_DIR}/ASM_UTILIZATION.log
 
@@ -765,19 +768,19 @@ cat ${ASM_UTL}|egrep -v ${EXL_DISK_GROUP}|awk '{ print $1" "$NF }'| while read O
    do
         ASMPRCUSED=`echo ${OUTPUT3}|awk '{print $NF}'`
         ASMDGNAME=`echo ${OUTPUT3}|awk '{print $1}'`
-        echo "[Reported By ${SCRIPT_NAME} Script]"                       > ${ASMFULL}
+        echo "[Relatado pelo script ${SCRIPT_NAME}]"                       > ${ASMFULL}
         echo " "                                                        >> ${ASMFULL}
-        echo "ASM_DISK_GROUP            %USED"                          >> ${ASMFULL}
+        echo "ASM_DISK_GROUP            %USADO"                          >> ${ASMFULL}
         echo "----------------------          --------------"           >> ${ASMFULL}
         echo "${ASMDGNAME}                        ${ASMPRCUSED}%"       >> ${ASMFULL}
 
-# Convert ASMPRCUSED from float number to integer:
+# Converter ASMPRCUSED de número flutuante para inteiro:
 ASMPRCUSED=${ASMPRCUSED%.*}
         if [ -z ${ASMPRCUSED} ]
          then
           ASMPRCUSED=1
         fi
-# If ASM %USED >= the defined threshold send an email for each DISKGROUP:
+# Se ASM %USADO >= o limite definido, enviar um e-mail para cada GRUPO DE DISCO:
                if [ ${ASMPRCUSED} -ge ${ASMTHRESHOLD} ]
                  then
 ASM_RPT=${LOG_DIR}/ASM_REPORT.log
@@ -788,7 +791,7 @@ set linesize 199
 col name for a35
 SPOOL ${ASM_RPT}
 prompt
-prompt ASM DISK GROUPS:
+prompt GRUPOS DE DISCO ASM:
 PROMPT ------------------
 
 select name,total_mb,free_mb,ROUND((1-(free_mb / total_mb))*100, 2) "%FULL" from v\$asm_diskgroup;
@@ -797,7 +800,7 @@ exit;
 EOF
 )
 
-mail -s "ALERT: ASM DISK GROUP [${ASMDGNAME}] has reached ${ASMPRCUSED}% on database [${DB_NAME_UPPER}] on Server [${SRV_NAME}]" $MAIL_LIST < ${ASM_RPT}
+mail -s "ALERTA: GRUPO DE DISCO ASM [${ASMDGNAME}] atingiu ${ASMPRCUSED}% no banco de dados [${DB_NAME_UPPER}] no Servidor [${SRV_NAME}]" $MAIL_LIST < ${ASM_RPT}
                fi
    done
 
@@ -806,14 +809,14 @@ rm -f ${ASM_RPT}
   fi
 
 # #########################
-# Tablespaces Size Check:
+# Verificação de Tamanho dos Tablespaces:
 # #########################
 
-echo "Checking TABLESPACES on [${ORACLE_SID}] ..."
+echo "Verificando TABLESPACES em [${ORACLE_SID}] ..."
 
         if [ ${DB_VER} -gt 10 ]
          then
-# If The Database Version is 11g Onwards:
+# Se a Versão do Banco de Dados for 11g em diante:
 
 TBSCHK=$(${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" << EOF
 
@@ -838,8 +841,8 @@ EOF
 
          else
 
-# If The Database Version is 10g Backwards:
-# Check if AUTOEXTEND OFF (MAXSIZE=0) is set for any of the datafiles divide by ALLOCATED size else divide by MAXSIZE:
+# Se a Versão do Banco de Dados for 10g para trás:
+# Verificar se AUTOEXTEND OFF (MAXSIZE=0) está definido para qualquer um dos datafiles dividir pelo tamanho ALOCADO, caso contrário, dividir pelo MAXSIZE:
 VAL33=$(${ORACLE_HOME}/bin/sqlplus -S '/ as sysdba' << EOF
 set pages 0 feedback off;
 SELECT COUNT(*) FROM DBA_DATA_FILES WHERE MAXBYTES=0;
@@ -911,23 +914,23 @@ cat ${TBSLOG}|egrep -v ${EXL_TBS} |awk '{ print $1" "$NF }'| while read OUTPUT2
    do
         PRCUSED=`echo ${OUTPUT2}|awk '{print $NF}'`
         TBSNAME=`echo ${OUTPUT2}|awk '{print $1}'`
-        echo "[Reported By ${SCRIPT_NAME} Script]"               > ${TBSFULL}
+        echo "[Relatado pelo script ${SCRIPT_NAME}]"               > ${TBSFULL}
         echo " "                                                >> ${TBSFULL}
-        echo "Tablespace_name          %USED"                   >> ${TBSFULL}
+        echo "Tablespace_name          %USADO"                   >> ${TBSFULL}
         echo "----------------------          --------------"   >> ${TBSFULL}
 #       echo ${OUTPUT2}|awk '{print $1"                              "$NF}' >> ${TBSFULL}
         echo "${TBSNAME}                        ${PRCUSED}%"    >> ${TBSFULL}
 
-# Convert PRCUSED from float number to integer:
+# Converter PRCUSED de número flutuante para inteiro:
 PRCUSED=${PRCUSED%.*}
         if [ -z ${PRCUSED} ]
          then
           PRCUSED=1
         fi
-# If the tablespace %USED >= the defined threshold send an email for each tablespace:
+# Se o tablespace %USADO >= o limite definido, enviar um e-mail para cada tablespace:
                if [ ${PRCUSED} -ge ${TBSTHRESHOLD} ]
                  then
-mail -s "ALERT: TABLESPACE [${TBSNAME}] reached ${PRCUSED}% on database [${DB_NAME_UPPER}] on Server [${SRV_NAME}]" $MAIL_LIST < ${TBSFULL}
+mail -s "ALERTA: TABLESPACE [${TBSNAME}] atingiu ${PRCUSED}% no banco de dados [${DB_NAME_UPPER}] no Servidor [${SRV_NAME}]" $MAIL_LIST < ${TBSFULL}
                fi
    done
 
@@ -936,7 +939,7 @@ rm -f ${LOG_DIR}/full_tbs.log
 
 
 # ############################################
-# Checking Monitored Services:
+# Verificando Serviços Monitorados:
 # ############################################
 
 #case ${DB_NAME} in
@@ -945,7 +948,7 @@ rm -f ${LOG_DIR}/full_tbs.log
 
 if [ ! -x ${SERVICEMON} ]
 then
-echo "Checking Monitored Services on [${ORACLE_SID}] ..."
+echo "Verificando Serviços Monitorados em [${ORACLE_SID}] ..."
 VAL_SRVMON_RAW=$(${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" << EOF
 set pages 0 feedback off;
 prompt
@@ -962,7 +965,7 @@ VAL_SRVMON_EMAIL=$(${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" << EOF
 set linesize 160 pages 0 echo off feedback off
 spool ${LOG_DIR}/current_running_services.log
 PROMPT
-PROMPT Current Running Services: [Instance: ${ORACLE_SID}]
+PROMPT Serviços em Execução no Momento: [Instância: ${ORACLE_SID}]
 PROMPT ************************
 
 select INST_ID,NAME from GV\$ACTIVE_SERVICES where NAME not in ('SYS\$BACKGROUND','SYS\$USERS');
@@ -971,7 +974,7 @@ exit;
 EOF
 )
 
-mail -s "ALERT: SERVICE ${SERVICEMON} Is DOWN on database [${DB_NAME_UPPER}] on Server [${SRV_NAME}]" $MAIL_LIST < ${LOG_DIR}/current_running_services.log
+mail -s "ALERTA: SERVIÇO ${SERVICEMON} Está INDISPONÍVEL no banco de dados [${DB_NAME_UPPER}] no Servidor [${SRV_NAME}]" $MAIL_LIST < ${LOG_DIR}/current_running_services.log
 rm -f ${LOG_DIR}/current_running_services.log
                 fi
 fi
@@ -980,10 +983,10 @@ fi
 #esac
 
 # ############################################
-# Checking BLOCKING SESSIONS ON THE DATABASE:
+# Verificando SESSÕES BLOQUEADAS NO BANCO DE DADOS:
 # ############################################
 
-echo "Checking Blocking Sessions on [${ORACLE_SID}] ..."
+echo "Verificando Sessões Bloqueadas em [${ORACLE_SID}] ..."
 
 VAL77=$(${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" << EOF
 set pages 0 feedback off;
@@ -1015,7 +1018,7 @@ from gv\$LOCK l1, gv\$SESSION s1, gv\$LOCK l2, gv\$SESSION s2
 prompt
 prompt ----------------------------------------------------------------
 
-Prompt Blocking Locks On Objects Level:
+Prompt Bloqueios de Objetos:
 prompt ----------------------------------------------------------------
 
 set linesize 160 pages 100 echo on feedback on
@@ -1081,7 +1084,7 @@ AND l.BLOCK='1';
 prompt
 prompt ----------------------------------------------------------------
 
-Prompt Long Running Operations On DATABASE $ORACLE_SID:
+Prompt Operações Longas no BANCO DE DADOS $ORACLE_SID:
 prompt ----------------------------------------------------------------
 
 col "USER | SID,SERIAL#" for a40
@@ -1098,15 +1101,15 @@ spool off
 exit;
 EOF
 )
-mail -s "ALERT: BLOCKING SESSIONS detected on database [${DB_NAME_UPPER}] on Server [${SRV_NAME}]" $MAIL_LIST < ${LOG_DIR}/blocking_sessions.log
+mail -s "ALERTA: SESSÕES BLOQUEADAS detectadas no banco de dados [${DB_NAME_UPPER}] no Servidor [${SRV_NAME}]" $MAIL_LIST < ${LOG_DIR}/blocking_sessions.log
 rm -f ${LOG_DIR}/blocking_sessions.log
                 fi
   
 # #########################
-# Getting ALERTLOG path:
+# Obtendo caminho do ALERTLOG:
 # #########################
 
-echo "Checking ALERTLOG of [${ORACLE_SID}] ..."
+echo "Verificando ALERTLOG de [${ORACLE_SID}] ..."
 
 VAL2=$(${ORACLE_HOME}/bin/sqlplus -S "/ as sysdba" <<EOF
 set pages 0 feedback off;
@@ -1120,10 +1123,10 @@ ALERTDB=${ALERTZ}/alert_${ORACLE_SID}.log
 
 
 # ###########################
-# Checking Database Errors:
+# Verificando Erros do Banco de Dados:
 # ###########################
 
-# Determine the ALERTLOG path:
+# Determinar o caminho do ALERTLOG:
         if [ -f ${ALERTDB} ]
          then
           ALERTLOG=${ALERTDB}
@@ -1137,18 +1140,18 @@ ALERTDB=${ALERTZ}/alert_${ORACLE_SID}.log
           ALERTLOG=`/usr/bin/find ${ORACLE_BASE} -iname alert_${ORACLE_SID}.log  -print 2>/dev/null`
         fi
 
-# Rename the old log generated by the script (if exists):
+# Renomear o log antigo gerado pelo script (se existir):
  if [ -f ${LOG_DIR}/alert_${ORACLE_SID}_new.log ]
   then
    mv ${LOG_DIR}/alert_${ORACLE_SID}_new.log ${LOG_DIR}/alert_${ORACLE_SID}_old.log
-   # Create new log:
+   # Criar novo log:
    tail -1000 ${ALERTLOG} > ${LOG_DIR}/alert_${ORACLE_SID}_new.log
-   # Extract new entries by comparing old & new logs:
-   echo "[Reported By ${SCRIPT_NAME} Script]"    > ${LOG_DIR}/diff_${ORACLE_SID}.log
+   # Extrair novas entradas comparando logs antigos e novos:
+   echo "[Relatado pelo script ${SCRIPT_NAME}]"    > ${LOG_DIR}/diff_${ORACLE_SID}.log
    echo " "                                     >> ${LOG_DIR}/diff_${ORACLE_SID}.log
    diff ${LOG_DIR}/alert_${ORACLE_SID}_old.log ${LOG_DIR}/alert_${ORACLE_SID}_new.log |grep ">" | cut -f2 -d'>' >> ${LOG_DIR}/diff_${ORACLE_SID}.log
 
-   # Search for errors:
+   # Procurar por erros:
 
    ERRORS=`cat ${LOG_DIR}/diff_${ORACLE_SID}.log | grep 'ORA-\|TNS-' |egrep -v ${EXL_ALERT_ERR}| tail -1`
    EXPFLAG=`cat ${LOG_DIR}/diff_${ORACLE_SID}.log | grep 'DM00 ' | tail -1`
@@ -1160,22 +1163,22 @@ ALERTDB=${ALERTZ}/alert_${ORACLE_SID}.log
    FILE_ATTACH=${LOG_DIR}/diff_${ORACLE_SID}.log
 
  else
-   # Create new log:
-   echo "[Reported By ${SCRIPT_NAME} Script]"    > ${LOG_DIR}/alert_${ORACLE_SID}_new.log
+   # Criar novo log:
+   echo "[Relatado pelo script ${SCRIPT_NAME}]"    > ${LOG_DIR}/alert_${ORACLE_SID}_new.log
    echo " "                                     >> ${LOG_DIR}/alert_${ORACLE_SID}_new.log
    tail -1000 ${ALERTLOG}                       >> ${LOG_DIR}/alert_${ORACLE_SID}_new.log
 
-   # Search for errors:
+   # Procurar por erros:
    ERRORS=`cat ${LOG_DIR}/alert_${ORACLE_SID}_new.log | grep 'ORA-\|TNS-' |egrep -v ${EXL_ALERT_ERR}| tail -1`
    FILE_ATTACH=${LOG_DIR}/alert_${ORACLE_SID}_new.log
  fi
 
-# Send mail in case error exist:
+# Enviar e-mail caso existam erros:
 
         case "${ERRORS}" in
         *ORA-*|*TNS-*)
-mail -s "ALERT: Instance [${ORACLE_SID}] on Server [${SRV_NAME}] reporting errors: ${ERRORS}" ${MAIL_LIST} < ${FILE_ATTACH} 
-echo "ALERT: Instance [${ORACLE_SID}] on Server [${SRV_NAME}] reporting errors: ${ERRORS}"
+mail -s "ALERTA: Instância [${ORACLE_SID}] no Servidor [${SRV_NAME}] relatando erros: ${ERRORS}" ${MAIL_LIST} < ${FILE_ATTACH} 
+echo "ALERTA: Instância [${ORACLE_SID}] no Servidor [${SRV_NAME}] relatando erros: ${ERRORS}"
 	;;
         esac
 
@@ -1184,36 +1187,36 @@ echo "ALERT: Instance [${ORACLE_SID}] on Server [${SRV_NAME}] reporting errors: 
 
         case "${EXPFLAG}" in
         *'DM00'*)
-mail -s "INFO: EXPORT/IMPORT Operation Initiated on Instance [${ORACLE_SID}] on Server [${SRV_NAME}]" ${MAIL_LIST} < ${FILE_ATTACH}
-echo "INFO: EXPORT/IMPORT Operation Initiated on Instance [${ORACLE_SID}] on Server [${SRV_NAME}]"
+mail -s "INFO: Operação de EXPORT/IMPORT Iniciada na Instância [${ORACLE_SID}] no Servidor [${SRV_NAME}]" ${MAIL_LIST} < ${FILE_ATTACH}
+echo "INFO: Operação de EXPORT/IMPORT Iniciada na Instância [${ORACLE_SID}] no Servidor [${SRV_NAME}]"
         ;;
         esac
 
         case "${ALTERSFLAG}" in
         *'ALTER SYSTEM'*)
-mail -s "INFO: ALTER SYSTEM Command Executed Against Instance [${ORACLE_SID}] on Server [${SRV_NAME}]" ${MAIL_LIST} < ${FILE_ATTACH}
-echo "INFO: ALTER SYSTEM Command Executed Against Instance [${ORACLE_SID}] on Server [${SRV_NAME}]"
+mail -s "INFO: Comando ALTER SYSTEM Executado Contra a Instância [${ORACLE_SID}] no Servidor [${SRV_NAME}]" ${MAIL_LIST} < ${FILE_ATTACH}
+echo "INFO: Comando ALTER SYSTEM Executado Contra a Instância [${ORACLE_SID}] no Servidor [${SRV_NAME}]"
         ;;
         esac
 
         case "${ALTERDFLAG}" in
         *'Completed:'*)
-mail -s "INFO: MAJOR DB ACTIVITY Completed on Instance [${ORACLE_SID}] on Server [${SRV_NAME}]" ${MAIL_LIST} < ${FILE_ATTACH}
-echo "INFO: MAJOR DB ACTIVITY Completed on Instance [${ORACLE_SID}] on Server [${SRV_NAME}]"
+mail -s "INFO: ATIVIDADE IMPORTANTE DO DB Concluída na Instância [${ORACLE_SID}] no Servidor [${SRV_NAME}]" ${MAIL_LIST} < ${FILE_ATTACH}
+echo "INFO: ATIVIDADE IMPORTANTE DO DB Concluída na Instância [${ORACLE_SID}] no Servidor [${SRV_NAME}]"
         ;;
         esac
 
         case "${STARTUPFLAG}" in
         *'Starting ORACLE instance'*)
-mail -s "ALERT: Startup Event of Instance [${ORACLE_SID}] Triggered on Server [${SRV_NAME}]" ${MAIL_LIST} < ${FILE_ATTACH}
-echo "ALERT: Startup Event of Instance [${ORACLE_SID}] Triggered on Server [${SRV_NAME}]"
+mail -s "ALERTA: Evento de Inicialização da Instância [${ORACLE_SID}] Disparado no Servidor [${SRV_NAME}]" ${MAIL_LIST} < ${FILE_ATTACH}
+echo "ALERTA: Evento de Inicialização da Instância [${ORACLE_SID}] Disparado no Servidor [${SRV_NAME}]"
         ;;
         esac
 
         case "${SHUTDOWNFLAG}" in
         *'Instance shutdown complete'*)
-mail -s "ALARM: Shutdown Event of Instance [${ORACLE_SID}] Triggered on Server [${SRV_NAME}]" ${MAIL_LIST} < ${FILE_ATTACH}
-echo "ALARM: Shutdown Event of Instance [${ORACLE_SID}] Triggered on Server [${SRV_NAME}]"
+mail -s "ALERTA: Evento de Desligamento da Instância [${ORACLE_SID}] Disparado no Servidor [${SRV_NAME}]" ${MAIL_LIST} < ${FILE_ATTACH}
+echo "ALERTA: Evento de Desligamento da Instância [${ORACLE_SID}] Disparado no Servidor [${SRV_NAME}]"
         ;;
         esac
 
@@ -1223,41 +1226,41 @@ echo "ALARM: Shutdown Event of Instance [${ORACLE_SID}] Triggered on Server [${S
 
 
 # #####################
-# Reporting Offline DBs:
+# Relatando Bancos de Dados Offline:
 # #####################
-# Populate ${LOG_DIR}/alldb_DBA_BUNDLE.log from ORATAB:
-# put all running instances in one variable:
+# Popular ${LOG_DIR}/alldb_DBA_BUNDLE.log a partir do ORATAB:
+# colocar todas as instâncias em execução em uma variável:
 ALL_RUNNING_INSTANCES=`ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|awk '{print $NF}'|sed -e 's/ora_pmon_//g'|grep -v sed|grep -v "s///g"`
-# Exclude all running instances/DB names from getting checked when reading ORATAB file:
+# Excluir todas as instâncias/bancos de dados em execução de serem verificadas ao ler o arquivo ORATAB:
 grep -v '^\#' $ORATAB |egrep -v "${EXL_DB}"|egrep -v "${ALL_RUNNING_INSTANCES}"|grep -v "${DB_NAME_LOWER}:"| grep -v "${DB_NAME_UPPER}:"|  grep -v '^$' | grep "^" | cut -f1 -d':' > ${LOG_DIR}/alldb_DBA_BUNDLE.log
 
-# Populate ${LOG_DIR}/updb_DBA_BUNDLE.log:
+# Popular ${LOG_DIR}/updb_DBA_BUNDLE.log:
   echo ${ORACLE_SID}    >> ${LOG_DIR}/updb_DBA_BUNDLE.log
   echo ${DB_NAME}       >> ${LOG_DIR}/updb_DBA_BUNDLE.log
 
-# End looping for databases:
+# Fim do loop para bancos de dados:
 done
 
-# Continue Reporting Offline DBs...
+# Continuar Relatando Bancos de Dados Offline...
         case ${CHKOFFLINEDB} in
         Y|y|YES|yes|Yes)
-echo "Checking for Offline Databases ..."
-# Sort the lines alphabetically with removing duplicates:
+echo "Verificando Bancos de Dados Offline ..."
+# Ordenar as linhas alfabeticamente removendo duplicatas:
 sort ${LOG_DIR}/updb_DBA_BUNDLE.log  | uniq -d                                  > ${LOG_DIR}/updb_DBA_BUNDLE.log.sort
 sort ${LOG_DIR}/alldb_DBA_BUNDLE.log                                            > ${LOG_DIR}/alldb_DBA_BUNDLE.log.sort
 diff ${LOG_DIR}/alldb_DBA_BUNDLE.log.sort ${LOG_DIR}/updb_DBA_BUNDLE.log.sort   > ${LOG_DIR}/diff_DBA_BUNDLE.sort
-echo "The Following Instances are POSSIBLY Down/Hanged on [${SRV_NAME}]:"       > ${LOG_DIR}/offdb_DBA_BUNDLE.log
+echo "As Seguintes Instâncias estão POSSIVELMENTE Offline/Travadas em [${SRV_NAME}]:"       > ${LOG_DIR}/offdb_DBA_BUNDLE.log
 echo "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"       >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
 grep "^< " ${LOG_DIR}/diff_DBA_BUNDLE.sort | cut -f2 -d'<'                      >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
 echo " "                                                                        >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
-echo "If above instances are permanently offline, please add their names to 'EXL_DB' parameter at line# 90 or hash their entries in ${ORATAB} to let the script ignore them in the next run." >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
+echo "Se as instâncias acima estiverem permanentemente offline, adicione seus nomes ao parâmetro 'EXL_DB' na linha# 90 ou comente suas entradas no ${ORATAB} para que o script as ignore na próxima execução." >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
 OFFLINE_DBS_NUM=`cat ${LOG_DIR}/offdb_DBA_BUNDLE.log| wc -l`
   
-# If OFFLINE_DBS is not null:
+# Se OFFLINE_DBS não for nulo:
         if [ ${OFFLINE_DBS_NUM} -gt 4 ]
          then
 echo ""                           >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
-echo "Current Running Instances:" >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
+echo "Instâncias em Execução no Momento:" >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
 echo "************************"   >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
 ps -ef|grep pmon|grep -v grep     >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
 echo ""                           >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
@@ -1275,10 +1278,10 @@ EOF
 )
 cat ${LOG_DIR}/running_instances.log >> ${LOG_DIR}/offdb_DBA_BUNDLE.log
 
-mail -s "ALARM: Database Inaccessible on Server: [$SRV_NAME]" $MAIL_LIST < ${LOG_DIR}/offdb_DBA_BUNDLE.log
+mail -s "ALERTA: Banco de Dados Inacessível no Servidor: [$SRV_NAME]" $MAIL_LIST < ${LOG_DIR}/offdb_DBA_BUNDLE.log
         fi
 
-# Wiping Logs:
+# Limpando Logs:
 #cat /dev/null >  ${LOG_DIR}/updb_DBA_BUNDLE.log
 #cat /dev/null >  ${LOG_DIR}/alldb_DBA_BUNDLE.log
 #cat /dev/null >  ${LOG_DIR}/updb_DBA_BUNDLE.log.sort
@@ -1295,24 +1298,24 @@ rm -f ${LOG_DIR}/diff_DBA_BUNDLE.sort
         esac
 
 # ###########################
-# Checking Listeners log:
+# Verificando logs de Listeners:
 # ###########################
-# Check if the LISTENER CHECK flag is Y:
+# Verificar se a flag de VERIFICAÇÃO DO LISTENER está em Y:
 
                 case ${CHKLISTENER} in
                 Y|y|YES|yes|Yes)
-echo "Checking Listener Log of [${ORACLE_SID}] ..."
-# In case there is NO Listeners are running send an (Alarm):
+echo "Verificando Log do Listener de [${ORACLE_SID}] ..."
+# Caso não haja Listeners em execução, enviar um (Alarme):
 LSN_COUNT=$( ps -ef|grep -v grep|grep tnslsnr|wc -l )
 
  if [ $LSN_COUNT -eq 0 ]
   then
-   echo "The following are the LISTENERS running by user ${ORA_USER} on server ${SRV_NAME}:"     > ${LOG_DIR}/listener_processes.log
+   echo "Os seguintes são os LISTENERS em execução pelo usuário ${ORA_USER} no servidor ${SRV_NAME}:"     > ${LOG_DIR}/listener_processes.log
    echo "************************************************************************************"  >> ${LOG_DIR}/listener_processes.log
    ps -ef|grep -v grep|grep tnslsnr                                                             >> ${LOG_DIR}/listener_processes.log
-mail -s "ALARM: No Listeners Are Running on Server: $SRV_NAME !!!" $MAIL_LIST                    < ${LOG_DIR}/listener_processes.log
+mail -s "ALERTA: Nenhum Listener Está em Execução no Servidor: $SRV_NAME !!!" $MAIL_LIST                    < ${LOG_DIR}/listener_processes.log
   
-  # In case there is listener running analyze its log:
+  # Caso haja listener em execução, analisar seu log:
   else
 #        for LISTENER_NAME in $( ps -ef|grep -v grep|grep tnslsnr|awk '{print $(NF-1)}' )
          for LISTENER_NAME in $( ps -ef|grep -v grep|grep tnslsnr|awk '{print $(9)}' )
@@ -1327,10 +1330,10 @@ mail -s "ALARM: No Listeners Are Running on Server: $SRV_NAME !!!" $MAIL_LIST   
           LISTENER_LOG=${LISTENER_LOGDIR}/trace/${LISTENER_NAME}.log
           export LISTENER_LOG
 
-          # Determine if the listener name is in Upper/Lower case:
+          # Determinar se o nome do listener está em maiúsculas/minúsculas:
                 if [ ! -f  ${LISTENER_LOG} ]
                  then
-                  # Listner_name is Uppercase:
+                  # Nome do listener está em maiúsculas:
                   LISTENER_NAME=$( echo ${LISTENER_NAME} | awk '{print toupper($0)}' )
                   export LISTENER_NAME
                   LISTENER_LOG=${LISTENER_LOGDIR}/trace/${LISTENER_NAME}.log
@@ -1338,7 +1341,7 @@ mail -s "ALARM: No Listeners Are Running on Server: $SRV_NAME !!!" $MAIL_LIST   
                 fi
                 if [ ! -f  ${LISTENER_LOG} ]
                  then
-                  # Listener_name is Lowercase:
+                  # Nome do listener está em minúsculas:
                   LISTENER_NAME=$( echo "${LISTENER_NAME}" | awk '{print tolower($0)}' )
                   export LISTENER_NAME
                   LISTENER_LOG=${LISTENER_LOGDIR}/trace/${LISTENER_NAME}.log
@@ -1347,49 +1350,49 @@ mail -s "ALARM: No Listeners Are Running on Server: $SRV_NAME !!!" $MAIL_LIST   
 
     if [ -f  ${LISTENER_LOG} ]
         then
-          # Rename the old log (If exists):
+          # Renomear o log antigo (Se existir):
           if [ -f ${LOG_DIR}/alert_${LISTENER_NAME}_new.log ]
            then
               mv ${LOG_DIR}/alert_${LISTENER_NAME}_new.log ${LOG_DIR}/alert_${LISTENER_NAME}_old.log
-            # Create a new log:
+            # Criar um novo log:
               tail -1000 ${LISTENER_LOG}                 > ${LOG_DIR}/alert_${LISTENER_NAME}_new.log
-            # Get the new entries:
-              echo "[Reported By ${SCRIPT_NAME} Script]"  > ${LOG_DIR}/diff_${LISTENER_NAME}.log
+            # Obter as novas entradas:
+              echo "[Relatado pelo script ${SCRIPT_NAME}]"  > ${LOG_DIR}/diff_${LISTENER_NAME}.log
               echo " "                                  >> ${LOG_DIR}/diff_${LISTENER_NAME}.log
               diff ${LOG_DIR}/alert_${LISTENER_NAME}_old.log  ${LOG_DIR}/alert_${LISTENER_NAME}_new.log | grep ">" | cut -f2 -d'>' >> ${LOG_DIR}/diff_${LISTENER_NAME}.log
-            # Search for errors:
+            # Procurar por erros:
              #ERRORS=`cat ${LOG_DIR}/diff_${LISTENER_NAME}.log|grep "TNS-"|egrep -v "${EXL_LSNR_ERR}"|tail -1`
              ERRORS=`cat ${LOG_DIR}/diff_${LISTENER_NAME}.log|grep "TNS-"|egrep -v "${EXL_LSNR_ERR}"|tail -1`
              SRVC_REG=`cat ${LOG_DIR}/diff_${LISTENER_NAME}.log| grep "service_register" `
              FILE_ATTACH=${LOG_DIR}/diff_${LISTENER_NAME}.log
 
-         # If no old logs exist:
+         # Se não houver logs antigos:
          else
-            # Just create a new log without doing any comparison:
-             echo "[Reported By ${SCRIPT_NAME} Script]"          > ${LOG_DIR}/alert_${LISTENER_NAME}_new.log
+            # Apenas criar um novo log sem fazer nenhuma comparação:
+             echo "[Relatado pelo script ${SCRIPT_NAME}]"          > ${LOG_DIR}/alert_${LISTENER_NAME}_new.log
              echo " "                                   >> ${LOG_DIR}/alert_${LISTENER_NAME}_new.log
              tail -1000 ${LISTENER_LOG}                 >> ${LOG_DIR}/alert_${LISTENER_NAME}_new.log
 
-            # Search for errors:
+            # Procurar por erros:
               #ERRORS=`cat ${LOG_DIR}/alert_${LISTENER_NAME}_new.log|grep "TNS-"|egrep -v "${EXL_LSNR_ERR}"|tail -1`
               ERRORS=`cat ${LOG_DIR}/alert_${LISTENER_NAME}_new.log|grep "TNS-"|egrep -v "${EXL_LSNR_ERR}"|tail -1`
               SRVC_REG=`cat ${LOG_DIR}/alert_${LISTENER_NAME}_new.log | grep "service_register" `
               FILE_ATTACH=${LOG_DIR}/alert_${LISTENER_NAME}_new.log
          fi
 
-          # Report TNS Errors (Alert)
+          # Relatar Erros TNS (Alerta)
             case "$ERRORS" in
             *TNS-*)
-mail -s "ALERT: Listener [${LISTENER_NAME}] on Server [${SRV_NAME}] reporting errors: ${ERRORS}" $MAIL_LIST < ${FILE_ATTACH}
+mail -s "ALERTA: Listener [${LISTENER_NAME}] no Servidor [${SRV_NAME}] relatando erros: ${ERRORS}" $MAIL_LIST < ${FILE_ATTACH}
             esac
 
-          # Report Registered Services to the listener (Info)
+          # Relatar Serviços Registrados no listener (Informação)
             case "$SRVC_REG" in
             *service_register*)
-mail -s "INFO: Service Registered on Listener [${LISTENER_NAME}] on Server [${SRV_NAME}] | TNS poisoning possibility" $MAIL_LIST < ${FILE_ATTACH}
+mail -s "INFO: Serviço Registrado no Listener [${LISTENER_NAME}] no Servidor [${SRV_NAME}] | Possibilidade de envenenamento TNS" $MAIL_LIST < ${FILE_ATTACH}
             esac
         else
-         echo "Cannot find the listener log: <${LISTENER_LOG}> for listener ${LISTENER_NAME} !"
+         echo "Não foi possível encontrar o log do listener: <${LISTENER_LOG}> para o listener ${LISTENER_NAME} !"
     fi
         done
  fi
@@ -1397,18 +1400,18 @@ mail -s "INFO: Service Registered on Listener [${LISTENER_NAME}] on Server [${SR
                 esac
 
 # ###########################
-# Checking Goldengate Errors:
+# Verificando Erros do Goldengate:
 # ###########################
-# Manually Specify goldengate logfile location: [In case the script failed to find its location]
+# Especificar manualmente a localização do arquivo de log do goldengate: [Caso o script falhe em encontrar sua localização]
 ALERTGGPATH=
 
-# Check if the Goldengate CHECK flag is Y:
+# Verificar se a flag de VERIFICAÇÃO DO GOLDENGATE está em Y:
 
                 case ${CHKGOLDENGATE} in
                 Y|y|YES|yes|Yes)
-echo "Checking GoldenGate log ..."
+echo "Verificando log do GoldenGate ..."
 
-# Determine goldengate log path:
+# Determinar o caminho do log do goldengate:
         if [ ! -z ${ALERTGGPATH} ]
          then
           GGLOG=${ALERTGGPATH}
@@ -1416,55 +1419,55 @@ echo "Checking GoldenGate log ..."
           GGLOG=`/bin/ps -ef|grep ggserr.log|grep -v grep|tail -1|awk '{print $NF}'`
         fi
 
-# Rename the old log generated by the script (if exists):
+# Renomear o log antigo gerado pelo script (se existir):
  if [ -f ${LOG_DIR}/ggserr_new.log ]
   then
    mv ${LOG_DIR}/ggserr_new.log ${LOG_DIR}/ggserr_old.log
-   # Create new log:
+   # Criar novo log:
    tail -1000 ${GGLOG}                          > ${LOG_DIR}/ggserr_new.log
 
-   # Extract new entries by comparing old & new logs:
-   echo "[Reported By ${SCRIPT_NAME} Script]"    > ${LOG_DIR}/diff_ggserr.log
+   # Extrair novas entradas comparando logs antigos e novos:
+   echo "[Relatado pelo script ${SCRIPT_NAME}]"    > ${LOG_DIR}/diff_ggserr.log
    echo " "                                     >> ${LOG_DIR}/diff_ggserr.log
    diff ${LOG_DIR}/ggserr_old.log  ${LOG_DIR}/ggserr_new.log |grep ">" | cut -f2 -d'>' >> ${LOG_DIR}/diff_ggserr.log
 
-   # Search for errors:
+   # Procurar por erros:
    #ERRORS=`cat ${LOG_DIR}/diff_ggserr.log | grep 'ERROR' |egrep -v ${EXL_GG_ERR}| tail -1`
    ERRORS=`cat ${LOG_DIR}/diff_ggserr.log | grep 'ERROR' | tail -1`
 
    FILE_ATTACH=${LOG_DIR}/diff_ggserr.log
 
  else
-   # Create new log:
-   echo "[Reported By ${SCRIPT_NAME} Script]"    > ${LOG_DIR}/ggserr_new.log
+   # Criar novo log:
+   echo "[Relatado pelo script ${SCRIPT_NAME}]"    > ${LOG_DIR}/ggserr_new.log
    echo " "                                     >> ${LOG_DIR}/ggserr_new.log
    tail -1000 ${GGLOG}                          >> ${LOG_DIR}/ggserr_new.log
 
-   # Search for errors:
+   # Procurar por erros:
    #ERRORS=`cat ${LOG_DIR}/ggserr_new.log | grep 'ERROR' |egrep -v ${EXL_GG_ERR}| tail -1`
    ERRORS=`cat ${LOG_DIR}/ggserr_new.log | grep 'ERROR' | tail -1`
    FILE_ATTACH=${LOG_DIR}/ggserr_new.log
  fi
 
-# Send mail in case error exist:
+# Enviar e-mail caso existam erros:
         case ${ERRORS} in
         *ERROR*)
-mail -s "Goldengate Error on Server [${SRV_NAME}]: ${ERRORS}" ${MAIL_LIST} < ${FILE_ATTACH}
+mail -s "Erro no Goldengate no Servidor [${SRV_NAME}]: ${ERRORS}" ${MAIL_LIST} < ${FILE_ATTACH}
         esac
                 esac
 
-# De-Neutralize login.sql file:
-# If login.sql was renamed during the execution of the script revert it back to its original name:
+# Desneutralizar arquivo login.sql:
+# Se login.sql foi renomeado durante a execução do script, revertê-lo para seu nome original:
         if [ -f ${USR_ORA_HOME}/login.sql_NeutralizedBy${SCRIPT_NAME} ]
          then
 mv ${USR_ORA_HOME}/login.sql_NeutralizedBy${SCRIPT_NAME}  ${USR_ORA_HOME}/login.sql
         fi
 
 # #############
-# END OF SCRIPT
+# FIM DO SCRIPT
 # #############
-# REPORT BUGS to: mahmmoudadel@hotmail.com
-# DOWNLOAD THE LATEST VERSION OF DATABASE ADMINISTRATION BUNDLE FROM:
+# RELATE BUGS para: mahmmoudadel@hotmail.com
+# BAIXE A VERSÃO MAIS RECENTE DO PACOTE DE ADMINISTRAÇÃO DE BANCO DE DADOS EM:
 # http://dba-tips.blogspot.com/2014/02/oracle-database-administration-scripts.html
-# DISCLAIMER: THIS SCRIPT IS DISTRIBUTED IN THE HOPE THAT IT WILL BE USEFUL, BUT WITHOUT ANY WARRANTY. IT IS PROVIDED "AS IS".
+# AVISO: ESTE SCRIPT É DISTRIBUÍDO NA ESPERANÇA DE QUE SEJA ÚTIL, MAS SEM QUALQUER GARANTIA. ELE É FORNECIDO "COMO ESTÁ".
 

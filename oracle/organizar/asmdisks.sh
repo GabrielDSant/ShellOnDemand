@@ -1,9 +1,9 @@
 ###################################################
-# Script to show ASM disks info and their group.		
+# Script para exibir informações dos discos ASM e seus grupos.
 VER="1.0"
 #					#   #     #
-# Author:	Mahmmoud ADEL	      # # # #   ###
-# Created:	27-12-17	    #   #   # #   # 
+# Autor:	Mahmmoud ADEL	      # # # #   ###
+# Criado:	27-12-17	    #   #   # #   # 
 #
 #
 #
@@ -12,56 +12,55 @@ VER="1.0"
 SCRIPT_NAME="asmdisks"
 
 # ###########
-# Description:
+# Descrição:
 # ###########
 echo
 echo "============================================================"
-echo "This script Show ASM DISKS information and their ASM Groups."
+echo "Este script exibe informações dos discos ASM e seus grupos ASM."
 echo "============================================================"
 echo
 sleep 1
 
-
 # #######################################
-# Excluded INSTANCES:
+# Instâncias Excluídas:
 # #######################################
-# Here you can mention the instances the script will IGNORE and will NOT run against:
-# Use pipe "|" as a separator between each instance name.
-# e.g. The following line is Excluding: -MGMTDB and ASM instances:
+# Aqui você pode mencionar as instâncias que o script irá IGNORAR e NÃO será executado contra:
+# Use o caractere pipe "|" como separador entre cada nome de instância.
+# Exemplo: A linha a seguir exclui: -MGMTDB e instâncias ASM:
 
-EXL_DB="\-MGMTDB|ASM"                           #Excluded INSTANCES [Will not get reported offline].
+EXL_DB="\-MGMTDB|ASM"                           # Instâncias Excluídas [Não serão reportadas como offline].
 
 # ###########################
-# Listing Available Databases:
+# Listando Bancos de Dados Disponíveis:
 # ###########################
 
-# Count Instance Numbers:
+# Contar o número de instâncias:
 INS_COUNT=$( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|wc -l )
 
-# Exit if No DBs are running:
+# Sair se nenhum banco de dados estiver em execução:
 if [ ${INS_COUNT} -eq 0 ]
  then
-   echo No Database Running !
+   echo Nenhum Banco de Dados em Execução!
    exit
 fi
 
-# If there is ONLY one DB set it as default without prompt for selection:
+# Se houver apenas um banco de dados, defini-lo como padrão sem solicitar seleção:
 if [ ${INS_COUNT} -eq 1 ]
  then
    export ORACLE_SID=$( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|awk '{print $NF}'|sed -e 's/ora_pmon_//g'|grep -v sed|grep -v "s///g" )
 
-# If there is more than one DB ASK the user to select:
+# Se houver mais de um banco de dados, solicitar ao usuário que selecione:
 elif [ ${INS_COUNT} -gt 1 ]
  then
     echo
-    echo "Select the ORACLE_SID:[Enter the number]"
+    echo "Selecione o ORACLE_SID:[Digite o número]"
     echo ---------------------
     select DB_ID in $( ps -ef|grep pmon|grep -v grep|egrep -v ${EXL_DB}|awk '{print $NF}'|sed -e 's/ora_pmon_//g'|grep -v sed|grep -v "s///g" )
      do
         if [ -z "${REPLY##[0-9]*}" ]
          then
           export ORACLE_SID=${DB_ID}
-          echo Selected Instance:
+          echo Instância Selecionada:
           echo
           echo "********"
           echo ${DB_ID}
@@ -75,120 +74,120 @@ elif [ ${INS_COUNT} -gt 1 ]
      done
 
 fi
-# Exit if the user selected a Non Listed Number:
+# Sair se o usuário selecionou um número não listado:
         if [ -z "${ORACLE_SID}" ]
          then
-          echo "You've Entered An INVALID ORACLE_SID"
+          echo "Você inseriu um ORACLE_SID INVÁLIDO"
           exit
         fi
 
-# #########################
-# Getting ORACLE_HOME
-# #########################
+# ########################################
+# Obtendo o ORACLE_HOME
+# ########################################
   ORA_USER=`ps -ef|grep ${ORACLE_SID}|grep pmon|grep -v grep|egrep -v ${EXL_DB}|awk '{print $1}'|tail -1`
   USR_ORA_HOME=`grep ${ORA_USER} /etc/passwd| cut -f6 -d ':'|tail -1`
 
-# SETTING ORATAB:
+# CONFIGURANDO ORATAB:
 if [ -f /etc/oratab ]
   then
   ORATAB=/etc/oratab
   export ORATAB
-## If OS is Solaris:
+## Se o sistema operacional for Solaris:
 elif [ -f /var/opt/oracle/oratab ]
   then
   ORATAB=/var/opt/oracle/oratab
   export ORATAB
 fi
 
-# ATTEMPT1: Get ORACLE_HOME using pwdx command:
+# TENTATIVA 1: Obter ORACLE_HOME usando o comando pwdx:
   PMON_PID=`pgrep  -lf _pmon_${ORACLE_SID}|awk '{print $1}'`
   export PMON_PID
   ORACLE_HOME=`pwdx ${PMON_PID}|awk '{print $NF}'|sed -e 's/\/dbs//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from PWDX is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do PWDX é ${ORACLE_HOME}"
 
-# ATTEMPT2: If ORACLE_HOME not found get it from oratab file:
+# TENTATIVA 2: Se ORACLE_HOME não for encontrado, obtê-lo do arquivo oratab:
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
-## If OS is Linux:
+## Se o sistema operacional for Linux:
 if [ -f /etc/oratab ]
   then
   ORATAB=/etc/oratab
   ORACLE_HOME=`grep -v '^\#' $ORATAB | grep -v '^$'| grep -i "^${ORACLE_SID}:" | perl -lpe'$_ = reverse' | cut -f3 | perl -lpe'$_ = reverse' |cut -f2 -d':'`
   export ORACLE_HOME
 
-## If OS is Solaris:
+## Se o sistema operacional for Solaris:
 elif [ -f /var/opt/oracle/oratab ]
   then
   ORATAB=/var/opt/oracle/oratab
   ORACLE_HOME=`grep -v '^\#' $ORATAB | grep -v '^$'| grep -i "^${ORACLE_SID}:" | perl -lpe'$_ = reverse' | cut -f3 | perl -lpe'$_ = reverse' |cut -f2 -d':'`
   export ORACLE_HOME
 fi
-#echo "ORACLE_HOME from oratab is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do oratab é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT3: If ORACLE_HOME is still not found, search for the environment variable: [Less accurate]
+# TENTATIVA 3: Se ORACLE_HOME ainda não for encontrado, procure pela variável de ambiente: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`env|grep -i ORACLE_HOME|sed -e 's/ORACLE_HOME=//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from environment  is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do ambiente é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT4: If ORACLE_HOME is not found in the environment search user's profile: [Less accurate]
+# TENTATIVA 4: Se ORACLE_HOME não for encontrado no ambiente, procure no perfil do usuário: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`grep -h 'ORACLE_HOME=\/' $USR_ORA_HOME/.bash_profile $USR_ORA_HOME/.*profile | perl -lpe'$_ = reverse' |cut -f1 -d'=' | perl -lpe'$_ = reverse'|tail -1`
   export ORACLE_HOME
-#echo "ORACLE_HOME from User Profile is ${ORACLE_HOME}"
+#echo "ORACLE_HOME do Perfil do Usuário é ${ORACLE_HOME}"
 fi
 
-# ATTEMPT5: If ORACLE_HOME is still not found, search for orapipe: [Least accurate]
+# TENTATIVA 5: Se ORACLE_HOME ainda não for encontrado, procure por orapipe: [Menos preciso]
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
   ORACLE_HOME=`locate -i orapipe|head -1|sed -e 's/\/bin\/orapipe//g'`
   export ORACLE_HOME
-#echo "ORACLE_HOME from orapipe search is ${ORACLE_HOME}"
+#echo "ORACLE_HOME da busca por orapipe é ${ORACLE_HOME}"
 fi
 
-# TERMINATE: If all above attempts failed to get ORACLE_HOME location, EXIT the script:
+# TERMINAR: Se todas as tentativas acima falharem em obter a localização do ORACLE_HOME, SAIR do script:
 if [ ! -f ${ORACLE_HOME}/bin/sqlplus ]
  then
-  echo "Please export ORACLE_HOME variable in your .bash_profile file under oracle user home directory in order to get this script to run properly"
-  echo "e.g."
+  echo "Por favor, exporte a variável ORACLE_HOME no seu arquivo .bash_profile no diretório home do usuário oracle para que este script funcione corretamente"
+  echo "Exemplo:"
   echo "export ORACLE_HOME=/u01/app/oracle/product/11.2.0/db_1"
 exit
 fi
 
 # ########################################
-# Exit if the user is not the Oracle Owner:
+# Sair se o usuário atual não for o proprietário do Oracle:
 # ########################################
 CURR_USER=`whoami`
         if [ ${ORA_USER} != ${CURR_USER} ]; then
           echo ""
-          echo "You're Running This Sctipt with User: \"${CURR_USER}\" !!!"
-          echo "Please Run This Script With The Right OS User: \"${ORA_USER}\""
-          echo "Script Terminated!"
+          echo "Você está executando este script com o usuário: \"${CURR_USER}\" !!!"
+          echo "Por favor, execute este script com o usuário correto do sistema operacional: \"${ORA_USER}\""
+          echo "Script Encerrado!"
           exit
         fi
 
 
 # #####################
-# SQLPLUS SCRIPT:
+# Script SQLPLUS:
 # #####################
 ${ORACLE_HOME}/bin/sqlplus -S '/ as sysdba' <<EOF
 set linesize 167 pages 100
 col name for a35
 PROMPT -----------------
 
-prompt ASM DISK GROUPS:
+prompt GRUPOS DE DISCO ASM:
 PROMPT -----------------
 
 select name,total_mb,free_mb,ROUND((1-(free_mb / total_mb))*100, 2) "%FULL" from v\$asm_diskgroup;
 
 PROMPT -----------------
 
-prompt ASM DISKS:
+prompt DISCOS ASM:
 PROMPT -----------------
 
 
@@ -205,7 +204,7 @@ ORDER BY a.name, b.path;
 EOF
 
 # #####################
-# OS SCRIPT:
+# Script do Sistema Operacional:
 # #####################
 
 FILE_NAME=/sbin/blkid
@@ -214,15 +213,15 @@ if [ -f ${FILE_NAME} ]
 then
 echo ""
 echo "----------------------------"
-echo "ASM DISKS OS MOUNTS & LABELS: ${FILE_NAME} |sort -k 2 -t:|grep oracleasm"
+echo "MONTAGENS E RÓTULOS DOS DISCOS ASM NO SISTEMA OPERACIONAL: ${FILE_NAME} |sort -k 2 -t:|grep oracleasm"
 echo "----------------------------"
 /sbin/blkid |sort -k 2 -t:|grep oracleasm
 echo ""
 fi
 
 # #############
-# END OF SCRIPT
+# FIM DO SCRIPT
 # #############
-# REPORT BUGS to: <mahmmoudadel@hotmail.com>.
-# DISCLAIMER: THIS SCRIPT IS DISTRIBUTED IN THE HOPE THAT IT WILL BE USEFUL, BUT WITHOUT ANY WARRANTY. IT IS PROVIDED "AS IS".
-# DOWNLOAD THE LATEST VERSION OF DATABASE ADMINISTRATION BUNDLE FROM: http://dba-tips.blogspot.com/2014/02/oracle-database-administration-scripts.html
+# RELATE BUGS para: <mahmmoudadel@hotmail.com>.
+# AVISO: ESTE SCRIPT É DISTRIBUÍDO NA ESPERANÇA DE SER ÚTIL, MAS SEM QUALQUER GARANTIA. ELE É FORNECIDO "COMO ESTÁ".
+# BAIXE A VERSÃO MAIS RECENTE DO PACOTE DE ADMINISTRAÇÃO DE BANCO DE DADOS EM: http://dba-tips.blogspot.com/2014/02/oracle-database-administration-scripts.html

@@ -1,89 +1,85 @@
 # ###################################################################################################
-# DATABASE DAILY HEALTH CHECK MONITORING SCRIPT [HTML VERSION]
+# SCRIPT DE MONITORAMENTO DIÁRIO DE SAÚDE DO BANCO DE DADOS [VERSÃO HTML]
 VER="[V4.0]"
 # ===============================================================================
-# CAUTION:
-# THIS SCRIPT MAY CAUSE A SLIGHT PERFORMANCE IMPACT WHEN IT RUN,
-# I RECOMMEND TO NOT RUN THIS SCRIPT SO FREQUENT.
-# E.G. YOU MAY CONSIDER TO SCHEDULE IT TO RUN ONE TIME BETWEEN 12:00AM to 5:00AM.
+# ATENÇÃO:
+# ESTE SCRIPT PODE CAUSAR UM IMPACTO LEVE NO DESEMPENHO QUANDO EXECUTADO.
+# RECOMENDO NÃO EXECUTÁ-LO COM MUITA FREQUÊNCIA.
+# EXEMPLO: VOCÊ PODE AGENDÁ-LO PARA EXECUTAR UMA VEZ ENTRE 00:00 E 05:00.
 # ===============================================================================
 #
-# FEATURES:
-# CHECKING CPU UTILIZATION.
-# CHECKING FILESYSTEM UTILIZATION.
-# CHECKING TABLESPACES UTILIZATION.
-# CHECKING FLASH RECOVERY AREA UTILIZATION.
-# CHECKING ASM DISKGROUPS UTILIZATION.
-# CHECKING BLOCKING SESSIONS ON THE DATABASE.
-# CHECKING UNUSABLE INDEXES ON THE DATABASE.
-# CHECKING INVALID OBJECTS ON THE DATABASE.
-# CHECKING FAILED LOGIN ATTEMPTS ON THE DATABASE.
-# CHEKCING AUDIT RECORDS ON THE DATABASE.
-# CHECKING CORRUPTED BLOCKS ON THE DATABASE.
-# CHECKING FAILED JOBS IN THE DATABASE.
-# CHECKING ACTIVE INCIDENTS.
-# CHECKING OUTSTANDING ALERTS.
-# CHECKING DATABASE SIZE GROWTH.
-# CHECKING OS / HARDWARE STATISTICS.
-# CHECKING RESOURCE LIMITS.
-# CHECKING RECYCLEBIN.
-# CHECKING CURRENT RESTORE POINTS.
-# CHECKING HEALTH MONITOR CHECKS RECOMMENDATIONS THAT RUN BY DBMS_HM PACKAGE.
-# CHEKCING MONITORED INDEXES.
-# CHECKING REDOLOG SWITCHES.
-# CHECKING MODIFIED INTIALIZATION PARAMETERS SINCE THE LAST DB STARTUP.
-# CHECKING ADVISORS RECOMMENDATIONS:
-#	   - SQL TUNING ADVISOR
-#	   - SGA ADVISOR
-#	   - PGA ADVISOR
-#	   - BUFFER CACHE ADVISOR
-#	   - SHARED POOL ADVISOR
-#	   - SEGMENT ADVISOR
+# FUNCIONALIDADES:
+# VERIFICAÇÃO DA UTILIZAÇÃO DA CPU.
+# VERIFICAÇÃO DA UTILIZAÇÃO DO SISTEMA DE ARQUIVOS.
+# VERIFICAÇÃO DA UTILIZAÇÃO DAS TABLESPACES.
+# VERIFICAÇÃO DA UTILIZAÇÃO DA ÁREA DE RECUPERAÇÃO FLASH.
+# VERIFICAÇÃO DA UTILIZAÇÃO DOS GRUPOS DE DISCOS ASM.
+# VERIFICAÇÃO DE SESSÕES BLOQUEADORAS NO BANCO DE DADOS.
+# VERIFICAÇÃO DE ÍNDICES INUTILIZÁVEIS NO BANCO DE DADOS.
+# VERIFICAÇÃO DE OBJETOS INVÁLIDOS NO BANCO DE DADOS.
+# VERIFICAÇÃO DE TENTATIVAS DE LOGIN FALHAS NO BANCO DE DADOS.
+# VERIFICAÇÃO DE REGISTROS DE AUDITORIA NO BANCO DE DADOS.
+# VERIFICAÇÃO DE BLOCOS CORROMPIDOS NO BANCO DE DADOS.
+# VERIFICAÇÃO DE JOBS FALHOS NO BANCO DE DADOS.
+# VERIFICAÇÃO DE INCIDENTES ATIVOS.
+# VERIFICAÇÃO DE ALERTAS PENDENTES.
+# VERIFICAÇÃO DO CRESCIMENTO DO TAMANHO DO BANCO DE DADOS.
+# VERIFICAÇÃO DE ESTATÍSTICAS DO SISTEMA OPERACIONAL/HARDWARE.
+# VERIFICAÇÃO DE LIMITES DE RECURSOS.
+# VERIFICAÇÃO DA LIXEIRA (RECYCLEBIN).
+# VERIFICAÇÃO DE PONTOS DE RESTAURAÇÃO ATUAIS.
+# VERIFICAÇÃO DE RECOMENDAÇÕES DE VERIFICAÇÃO DE SAÚDE EXECUTADAS PELO PACOTE DBMS_HM.
+# VERIFICAÇÃO DE ÍNDICES MONITORADOS.
+# VERIFICAÇÃO DE TROCAS DE REDOLOG.
+# VERIFICAÇÃO DE PARÂMETROS DE INICIALIZAÇÃO MODIFICADOS DESDE O ÚLTIMO INÍCIO DO BANCO DE DADOS.
+# VERIFICAÇÃO DE RECOMENDAÇÕES DE CONSULTORES:
+#	   - CONSULTOR DE OTIMIZAÇÃO DE SQL
+#	   - CONSULTOR DE SGA
+#	   - CONSULTOR DE PGA
+#	   - CONSULTOR DE CACHE DE BUFFER
+#	   - CONSULTOR DE POOL COMPARTILHADO
+#	   - CONSULTOR DE SEGMENTOS
 #
 #					#   #     #
-# Author:	Mahmmoud ADEL	      # # # #   ###
+# Autor:	Mahmmoud ADEL	      # # # #   ###
 # 				    #   #   # #   #  
 #
-# Created:      22-12-13 Based on dbalarm.sh script.
-# Modifications:18-05-14 Added Filsystem monitoring.
-#		19-05-14 Added CPU monitoring.
-#		09-12-14 Added Tablespaces monitoring
-#			 Added BLOCKING SESSIONS monitoring
-#			 Added UNUSABLE INDEXES monitoring 
-#			 Added INVALID OBJECTS monitoring
-#			 Added FAILED LOGINS monitoring
-#			 Added AUDIT RECORDS monitoring
-#			 Added CORRUPTED BLOCKS monitoring
-#			 [It will NOT run a SCAN. It will look at V$DATABASE_BLOCK_CORRUPTION]
-#			 Added FAILED JOBS monitoring.
-#		06-10-15 Replaced mpstat with iostat for CPU Utilization Check
-#		02-11-15 Enhanced "FAILED JOBS monitoring" part.
-#               13-12-15 Added Advisors Recommendations to the report
-#               04-04-16 dba_tablespace_usage_metrics view will be used for 11g onwards versions
-#                        for checking tablespaces size, advised by: Satyajit Mohapatra
-#               10-04-16 Add Flash Recovery Area monitoring
-#               10-04-16 Add ASM Disk Groups monitoring
-#		15-07-16 Add ACTIVE INCIDENTS, RESOURCE LIMITS, RECYCLEBIN, RESTORE POINTS,
-#			  MONITORED INDEXES, REDOLOG SWITCHES, MODIFIED SPFILE PARAMETERS checks.
-#		02-01-17 Removed ALERTLOG check for DB & Listener +
-#			 Merged alerts with advisors. 		[Recommended by: ABD-ELGAWAD]
-#		03-01-17 Added checking RAC status feature. 	[Recommended by: Samer ALJazzar]
-#		09-01-17 Added RMAN BACKUP CHECK.
-#		04-05-17 Added Reporting of Newly Created Objects in the last 24Hours.
-#		12-06-17 Added Long Running Jobs Alert.
-#		20-07-17 Neutralize login.sql if found under Oracle user home directory due to bugs.
-#               10-10-17 Added reporting Long Running Queries to the report.
-#		23-11-17 Convert the output report to HTML format
+# Criado:      22-12-13 Baseado no script dbalarm.sh.
+# Modificações:18-05-14 Adicionado monitoramento do sistema de arquivos.
+#		19-05-14 Adicionado monitoramento da CPU.
+#		09-12-14 Adicionado monitoramento de tablespaces.
+#			 Adicionado monitoramento de sessões bloqueadoras.
+#			 Adicionado monitoramento de índices inutilizáveis.
+#			 Adicionado monitoramento de objetos inválidos.
+#			 Adicionado monitoramento de logins falhos.
+#			 Adicionado monitoramento de registros de auditoria.
+#			 Adicionado monitoramento de blocos corrompidos.
+#			 [Não executará uma varredura. Consultará a visão V$DATABASE_BLOCK_CORRUPTION.]
+#			 Adicionado monitoramento de jobs falhos.
+#		06-10-15 Substituído mpstat por iostat para verificação de utilização da CPU.
+#		02-11-15 Melhorado o monitoramento de "jobs falhos".
+#               13-12-15 Adicionado recomendações de consultores ao relatório.
+#               04-04-16 A visão dba_tablespace_usage_metrics será usada para versões 11g em diante
+#                        para verificar o tamanho das tablespaces, conforme sugerido por: Satyajit Mohapatra.
+#               10-04-16 Adicionado monitoramento da área de recuperação flash.
+#               10-04-16 Adicionado monitoramento de grupos de discos ASM.
+#		15-07-16 Adicionado monitoramento de incidentes ativos, limites de recursos, lixeira, pontos de restauração,
+#			  índices monitorados, trocas de redolog, parâmetros SPFILE modificados.
+#		02-01-17 Removido verificação de ALERTLOG para DB & Listener +
+#			 Mesclado alertas com consultores. 		[Recomendado por: ABD-ELGAWAD]
+#		03-01-17 Adicionado recurso de verificação de status RAC. 	[Recomendado por: Samer ALJazzar]
+#		09-01-17 Adicionado verificação de backup RMAN.
+#		04-05-17 Adicionado relatório de objetos recém-criados nas últimas 24 horas.
+#		12-06-17 Adicionado alerta de jobs de longa duração.
+#		20-07-17 Neutralizado login.sql se encontrado no diretório home do usuário Oracle devido a bugs.
+#               10-10-17 Adicionado relatório de consultas de longa duração ao relatório.
+#		23-11-17 Convertido o relatório de saída para o formato HTML.
 #
-#
-#
-#
-#
-#
-#
-#
-#
-# 
+# PROPÓSITO DO SCRIPT:
+# Este script realiza uma verificação abrangente da saúde do banco de dados Oracle e do sistema operacional subjacente.
+# Ele gera um relatório detalhado em formato HTML, que pode ser enviado por e-mail ou salvo em disco.
+# O objetivo é identificar problemas potenciais, como utilização excessiva de recursos, objetos inválidos,
+# sessões bloqueadoras, falhas de jobs, entre outros, para que possam ser tratados proativamente.
 # ###################################################################################################
 SCRIPT_NAME="dbdailychk${VER}"
 SRV_NAME=`uname -n`
